@@ -1,0 +1,227 @@
+# Requirements – sharkord-hero-introducer
+
+> **Version:** 0.1.0
+> **Stand:** 11. März 2026
+> **Alleinige Quelle der Wahrheit** für alle funktionalen und nichtfunktionalen Anforderungen.
+
+---
+
+## Legende
+
+| Spalte | Bedeutung |
+|--------|-----------|
+| **REQ-ID** | Eindeutige, unveränderliche Anforderungs-ID |
+| **Status** | `Implemented` / `Open` |
+| **Priorität** | `Must` (Pflicht v0.1.0) · `Should` (angestrebt v0.1.0) · `Could` (Nice-to-have) |
+| **Traceability** | Datei + Zeilennummern der Implementierung |
+
+---
+
+## 1 · Kernfunktionalität (REQ-CORE)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-CORE-001 | Wenn ein User dem Sharkord-Server beitritt (`user:joined`-Event), wird anhand des `username` aus dem Event in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der MP3-Pfad als `path.join(pluginDir, "music", mp3FileName)` aufgelöst und das Intro automatisch im ersten aktiven Voice-Channel abgespielt. | Implemented | Must | `src/server.ts` L108–L159 |
+| REQ-CORE-002 | Wenn für einen User kein MP3-Mapping konfiguriert ist, erfolgt **keine** Audiowiedergabe und **kein** Fehler. | Implemented | Must | `src/server.ts` L114–L119 |
+| REQ-CORE-003 | Die MP3-Datei wird vor der Wiedergabe auf Existenz geprüft; fehlt die Datei, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L136–L142 |
+| REQ-CORE-004 | Die Audiowiedergabe erfolgt über `ffmpeg` (MP3 → Opus-RTP) an einen mediasoup `PlainTransport`. Der Stream wird via `ctx.actions.voice.createStream` im Voice-Channel exponiert. | Implemented | Must | `src/server.ts` L291–L400 |
+| REQ-CORE-005 | Das Plugin trackt aktive Voice-Channels über die Events `voice:runtime_initialized` und `voice:runtime_closed` in einem lokalen Set. | Implemented | Must | `src/server.ts` L82, L88–L96 |
+| REQ-CORE-006 | Ist kein aktiver Voice-Channel vorhanden, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L300–L303 |
+| REQ-CORE-007 | Nach Ende der Wiedergabe (ffmpeg-Exit oder Fehler) werden Producer, PlainTransport und Stream automatisch aufgeräumt (`close`/`remove`). | Implemented | Must | `src/server.ts` L378–L400 |
+
+### Abnahmekriterien REQ-CORE
+
+| REQ-ID | Abnahmekriterium |
+|--------|-----------------|
+| REQ-CORE-001 | Ein User mit konfiguriertem MP3-Mapping (Matching über `username` aus `user:joined`-Event) joint → MP3-Pfad wird als `path.join(pluginDir, "music", mp3FileName)` aufgelöst → alle Teilnehmer im Voice-Channel hören das Intro. |
+| REQ-CORE-002 | Ein User ohne MP3-Mapping joint → keine hörbare Ausgabe, kein Fehler im Log. |
+| REQ-CORE-003 | MP3 in music-map.json verweist auf nicht-existente Datei → Fehler-Log-Eintrag, keine Wiedergabe. |
+| REQ-CORE-004 | Während der Wiedergabe ist ein ffmpeg-Prozess aktiv und sendet Opus-RTP an den konfigurierten Port. |
+| REQ-CORE-005 | Nach `voice:runtime_initialized` enthält das interne Set die Channel-ID; nach `voice:runtime_closed` nicht mehr. |
+| REQ-CORE-006 | User joint bei 0 aktiven Voice-Channels → Fehler-Log "No active voice channel found". |
+| REQ-CORE-007 | Nach Wiedergabeende sind Producer und PlainTransport geschlossen und der Stream entfernt. |
+
+---
+
+## 2 · Slash-Commands (REQ-CMD)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-CMD-001 | `/hero-enable` setzt die Einstellung `enabled` auf `true` und bestätigt die Aktivierung per Rückmeldung. | Implemented | Must | `src/server.ts` L160–L170 |
+| REQ-CMD-002 | `/hero-disable` setzt die Einstellung `enabled` auf `false` und bestätigt die Deaktivierung per Rückmeldung. | Implemented | Must | `src/server.ts` L171–L180 |
+| REQ-CMD-003 | `/hero-stop` beendet sofort alle laufenden ffmpeg-Prozesse (SIGTERM) und gibt eine Bestätigung zurück. Sind keine Intros aktiv, wird eine entsprechende Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L182–L197 |
+| REQ-CMD-004 | `/hero-set <displayName> <mp3FileName>` speichert ein DisplayName→MP3-Mapping. Der `mp3FileName` ist nur der Dateiname (nicht der volle Pfad); die Datei wird im festen Verzeichnis `<plugin-dir>/music/` gesucht. Vor dem Speichern wird geprüft, dass der Dateiname auf `.mp3` endet und die Datei im music-Ordner existiert. Fehlerhafte Eingaben werden mit einer Fehlermeldung quittiert. | Implemented | Must | `src/server.ts` L205–L244 |
+| REQ-CMD-005 | `/hero-remove <displayName>` entfernt das MP3-Mapping für den angegebenen DisplayName. Existiert kein Mapping, wird eine Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L247–L272 |
+| REQ-CMD-006 | `/hero-list` gibt eine formatierte Liste aller DisplayName→MP3-Zuordnungen im Format `DisplayName: mp3FileName` zurück. Sind keine Mappings vorhanden, wird eine entsprechende Info-Meldung angezeigt. | Implemented | Must | `src/server.ts` L274–L288 |
+| REQ-CMD-007 | `/hero-files` listet alle verfügbaren MP3-Dateien auf, die im Verzeichnis `<plugin-dir>/music/` liegen. So kann der Admin sehen, welche Dateien zum Zuordnen verfügbar sind. | Implemented | Should | `src/server.ts` L290–L310 |
+
+### Abnahmekriterien REQ-CMD
+
+| REQ-ID | Abnahmekriterium |
+|--------|-----------------|
+| REQ-CMD-001 | Ausführung → Setting `enabled` ist `true`, Rückmeldung enthält Bestätigung. |
+| REQ-CMD-002 | Ausführung → Setting `enabled` ist `false`, Rückmeldung enthält Bestätigung. |
+| REQ-CMD-003 | Bei laufenden Intros: alle ffmpeg-Prozesse beendet, `activeProcesses`-Map leer. Ohne laufende Intros: Info-Meldung. |
+| REQ-CMD-004-A | Dateiendung ist nicht `.mp3` → Fehlermeldung "Only MP3 files are supported." |
+| REQ-CMD-004-B | MP3-Datei existiert nicht im `<plugin-dir>/music/`-Ordner → Fehlermeldung. |
+| REQ-CMD-004-C | Gültige MP3-Datei im music-Ordner → Mapping `displayName → mp3FileName` in `music-map.json` gespeichert, Bestätigung. |
+| REQ-CMD-005-A | Bestehende Zuordnung für DisplayName → Eintrag entfernt, Bestätigung. |
+| REQ-CMD-005-B | Keine Zuordnung für DisplayName vorhanden → Info-Meldung. |
+| REQ-CMD-006-A | Mindestens ein Mapping vorhanden → formatierte Liste mit `DisplayName: mp3FileName`. |
+| REQ-CMD-006-B | Keine Mappings → Info-Meldung "No intro mappings configured yet." |
+| REQ-CMD-007-A | Mindestens eine MP3-Datei im music-Ordner → formatierte Liste der Dateinamen. |
+| REQ-CMD-007-B | Keine Dateien im music-Ordner → Info-Meldung. |
+
+---
+
+## 3 · Konfiguration / Settings (REQ-CFG)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-CFG-001 | Das Plugin registriert eine Einstellung `enabled` (Typ: `boolean`, Default: `true`). Wenn `false`, wird bei keinem User-Join ein Intro abgespielt. | Implemented | Must | `src/server.ts` L56–L63 |
+| REQ-CFG-002 | Das Plugin registriert eine Einstellung `oncePerDay` (Typ: `boolean`, Default: `true`). Wenn `true`, wird jeder User maximal einmal pro Kalendertag begrüßt. | Implemented | Must | `src/server.ts` L64–L72 |
+| REQ-CFG-003 | Das Plugin aktiviert die Settings-UI im Sharkord-Frontend via `ctx.ui.enable()`, sodass Einstellungen im Frontend bearbeitet werden können. | Implemented | Should | `src/server.ts` L283 |
+
+### Abnahmekriterien REQ-CFG
+
+| REQ-ID | Abnahmekriterium |
+|--------|-----------------|
+| REQ-CFG-001 | Setting `enabled=false` → User joint → kein Intro, Debug-Log "Hero Introducer disabled". |
+| REQ-CFG-002-A | Setting `oncePerDay=true`, User wurde heute bereits begrüßt → kein erneutes Intro. |
+| REQ-CFG-002-B | Setting `oncePerDay=true`, User wurde heute noch nicht begrüßt → Intro wird abgespielt. |
+| REQ-CFG-002-C | Setting `oncePerDay=false` → User hört Intro bei jedem Join, unabhängig wie oft. |
+| REQ-CFG-003 | Im Sharkord-Frontend unter Plugins → Hero Introducer → Settings sind die Einstellungen sichtbar und editierbar. |
+
+---
+
+## 4 · Datenpersistenz (REQ-DATA)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-DATA-001 | Die DisplayName→MP3-Zuordnungen (`displayName → mp3FileName`) werden persistent als JSON in `<plugin-data-dir>/data/music-map.json` gespeichert. | Implemented | Must | `src/server.ts` L48 |
+| REQ-DATA-002 | Die Daily-Greet-Einträge (User-ID → ISO-Datum `YYYY-MM-DD`) werden persistent als JSON in `<plugin-data-dir>/data/daily-greets.json` gespeichert. | Implemented | Must | `src/server.ts` L48 |
+| REQ-DATA-003 | Das Datenverzeichnis `<plugin-data-dir>/data/` wird beim Plugin-Start automatisch erstellt, falls es nicht existiert. | Implemented | Must | `src/server.ts` L51 |
+| REQ-DATA-004 | Fehlt eine JSON-Datei beim Lesen (z.B. erster Start), wird ein definierter Fallback-Wert (`{}`) verwendet, statt einen Fehler zu werfen. | Implemented | Must | `src/server.ts` L24–L31 |
+| REQ-DATA-005 | Das Verzeichnis `<plugin-dir>/music/` wird beim Plugin-Start automatisch erstellt, falls es nicht existiert. Dies ist der feste Ablageordner für alle MP3-Dateien. | Implemented | Must | `src/server.ts` L53 |
+
+### Abnahmekriterien REQ-DATA
+
+| REQ-ID | Abnahmekriterium |
+|--------|-----------------|
+| REQ-DATA-001 | Nach `/hero-set TestUser intro.mp3` enthält `music-map.json` den Eintrag `"TestUser": "intro.mp3"`. |
+| REQ-DATA-002 | Nach erfolgreicher Begrüßung enthält `daily-greets.json` den Eintrag `"<userId>": "YYYY-MM-DD"` mit heutigem Datum. |
+| REQ-DATA-003 | Plugin startet in leerem Verzeichnis → `data/`-Ordner wird angelegt. |
+| REQ-DATA-004 | Plugin startet ohne vorhandene `music-map.json` → leeres Objekt `{}` wird verwendet, kein Crash. |
+| REQ-DATA-005 | Plugin startet in Umgebung ohne `music/`-Ordner → Ordner `<plugin-dir>/music/` wird automatisch angelegt. |
+
+---
+
+## 5 · Plugin Lifecycle (REQ-LIFE)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-LIFE-001 | Das Plugin exportiert eine `onLoad`-Funktion, die beim Laden des Plugins durch Sharkord aufgerufen wird. `onLoad` registriert Settings, Events, Commands und aktiviert die UI. | Implemented | Must | `src/server.ts` L42, L410 |
+| REQ-LIFE-002 | Das Plugin exportiert eine `onUnload`-Funktion, die beim Entladen des Plugins durch Sharkord aufgerufen wird und einen Log-Eintrag erzeugt. | Implemented | Must | `src/server.ts` L406–L408, L410 |
+| REQ-LIFE-003 | Der Build-Prozess (`bun build.ts`) erzeugt `dist/sharkord-hero-introducer/server.js` (ESM, target bun) und `dist/sharkord-hero-introducer/client.js` (ESM, target browser) sowie eine Kopie der `package.json`. | Implemented | Must | `build.ts` L1–L63 |
+| REQ-LIFE-004 | `client.ts` exportiert keine UI-Komponenten (leerer Client-Entry-Point). | Implemented | Could | `src/client.ts` L1–L2 |
+
+### Abnahmekriterien REQ-LIFE
+
+| REQ-ID | Abnahmekriterium |
+|--------|-----------------|
+| REQ-LIFE-001 | Nach Aufruf von `onLoad(ctx)` sind alle Commands registriert, Settings vorhanden, Events gebunden und UI aktiviert. |
+| REQ-LIFE-002 | Nach Aufruf von `onUnload(ctx)` wird "Hero Introducer unloaded" geloggt. |
+| REQ-LIFE-003 | `bun build.ts` → `dist/sharkord-hero-introducer/` enthält `server.js`, `client.js` und `package.json`. `server.js` enthält `export`-Marker. |
+| REQ-LIFE-004 | `client.js` enthält keine React-Komponenten oder UI-Logik. |
+
+---
+
+## 6 · Nichtfunktionale Anforderungen (REQ-NF)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-NF-001 | Der gesamte Plugin-Code ist in TypeScript geschrieben und typsicher kompilierbar. | Implemented | Must | `tsconfig.json`, `src/server.ts` |
+| REQ-NF-002 | Das Plugin verwendet Bun als Runtime (nicht Node.js). | Implemented | Must | `package.json` L6 |
+| REQ-NF-003 | Externe Abhängigkeit `mediasoup` wird beim Build als `external` markiert und nicht gebündelt. | Implemented | Must | `build.ts` L51 |
+| REQ-NF-004 | React und React-DOM werden als Client-Globals aufgelöst, nicht gebündelt (Sharkord stellt sie bereit). | Implemented | Should | `build.ts` L7–L44 |
+
+### Abnahmekriterien REQ-NF
+
+| REQ-ID | Abnahmekriterium |
+|--------|-----------------|
+| REQ-NF-001 | `tsc --noEmit` meldet keine Typfehler. |
+| REQ-NF-002 | Build-Target ist `bun` (server) bzw. `browser` (client); kein Node.js-spezifischer Code. |
+| REQ-NF-003 | `server.js` enthält kein gebündeltes mediasoup. |
+| REQ-NF-004 | `client.js` enthält `window.__SHARKORD_REACT__`-Referenzen statt gebündeltem React. |
+
+---
+
+## Traceability-Matrix (Zusammenfassung)
+
+| REQ-ID | Implementiert in | Getestet in |
+|--------|-----------------|-------------|
+| REQ-CORE-001 | `src/server.ts` L108–L159 | `tests/unit/server.test.ts` |
+| REQ-CORE-002 | `src/server.ts` L114–L119 | — (offen) |
+| REQ-CORE-003 | `src/server.ts` L136–L142 | — (offen) |
+| REQ-CORE-004 | `src/server.ts` L291–L400 | — (offen) |
+| REQ-CORE-005 | `src/server.ts` L82, L88–L96 | — (offen) |
+| REQ-CORE-006 | `src/server.ts` L300–L303 | — (offen) |
+| REQ-CORE-007 | `src/server.ts` L378–L400 | — (offen) |
+| REQ-CMD-001 | `src/server.ts` L160–L170 | — (offen) |
+| REQ-CMD-002 | `src/server.ts` L171–L180 | — (offen) |
+| REQ-CMD-003 | `src/server.ts` L182–L197 | — (offen) |
+| REQ-CMD-004 | `src/server.ts` L205–L244 | `tests/unit/server.test.ts` |
+| REQ-CMD-005 | `src/server.ts` L247–L272 | `tests/unit/server.test.ts` |
+| REQ-CMD-006 | `src/server.ts` L274–L288 | `tests/unit/server.test.ts` |
+| REQ-CMD-007 | `src/server.ts` L290–L310 | `tests/unit/server.test.ts` |
+| REQ-CFG-001 | `src/server.ts` L56–L63 | `tests/unit/server.test.ts` |
+| REQ-CFG-002 | `src/server.ts` L64–L72 | — (offen) |
+| REQ-CFG-003 | `src/server.ts` L283 | — (offen) |
+| REQ-DATA-001 | `src/server.ts` L48 | — (offen) |
+| REQ-DATA-002 | `src/server.ts` L48 | — (offen) |
+| REQ-DATA-003 | `src/server.ts` L51 | `tests/unit/server.test.ts` |
+| REQ-DATA-004 | `src/server.ts` L24–L31 | — (offen) |
+| REQ-DATA-005 | `src/server.ts` L53 | `tests/unit/server.test.ts` |
+| REQ-LIFE-001 | `src/server.ts` L42, L410 | `tests/unit/server.test.ts` |
+| REQ-LIFE-002 | `src/server.ts` L406–L410 | `tests/unit/server.test.ts` |
+| REQ-LIFE-003 | `build.ts` L1–L63 | `tests/unit/build.test.ts` |
+| REQ-LIFE-004 | `src/client.ts` L1–L2 | — (offen) |
+| REQ-NF-001 | `tsconfig.json`, `src/server.ts` | — (offen) |
+| REQ-NF-002 | `package.json` L6 | — (offen) |
+| REQ-NF-003 | `build.ts` L51 | `tests/unit/build.test.ts` |
+| REQ-NF-004 | `build.ts` L7–L44 | — (offen) |
+
+---
+
+## Lückenanalyse
+
+### Tests fehlen für:
+- **REQ-CORE-002 bis REQ-CORE-007** — Kernszenarios (No-Mapping, Datei-Check, Streaming, Channel-Tracking, Cleanup) sind nicht unit-getestet.
+- **REQ-CMD-001 bis REQ-CMD-003** — Enable/Disable/Stop-Commands nicht getestet.
+- **REQ-CFG-002, REQ-CFG-003** — Settings `oncePerDay` und UI-Aktivierung nicht getestet.
+- **REQ-DATA-001, REQ-DATA-002, REQ-DATA-004** — JSON-Persistenz (Pfade, Daily-Greets, Fallback) nicht getestet.
+- **REQ-LIFE-004** — Leerer Client-Entry-Point nicht getestet.
+- **REQ-NF-001 bis REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
+
+### Bereits getestet:
+- **REQ-CORE-001** — Auto-Play bei Join (`tests/unit/server.test.ts`)
+- **REQ-CMD-004 bis REQ-CMD-007** — Set, Remove, List, Files Commands (`tests/unit/server.test.ts`)
+- **REQ-CFG-001** — Enabled-Setting (`tests/unit/server.test.ts`)
+- **REQ-DATA-003, REQ-DATA-005** — Verzeichnis-Erstellung (`tests/unit/server.test.ts`)
+- **REQ-LIFE-001, REQ-LIFE-002** — onLoad/onUnload (`tests/unit/server.test.ts`)
+- **REQ-LIFE-003, REQ-NF-003** — Build-Prozess (`tests/unit/build.test.ts`)
+
+### Empfehlung an Developer/Tester:
+1. **Höchste Priorität:** Unit-Tests für REQ-CORE-002, REQ-CORE-003, REQ-CFG-002 — Kern-Use-Cases ohne Testabdeckung.
+2. **Hohe Priorität:** Tests für REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop).
+3. **Mittlere Priorität:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004) mit temporärem Dateisystem.
+
+---
+
+## Änderungshistorie
+
+| Datum | Änderung | Autor |
+|-------|----------|-------|
+| 2026-03-11 | Initiale Erfassung aller Requirements aus Implementierungsstand v0.1.0 | Requirements Engineer |
+| 2026-03-11 | **DisplayName-Refactoring:** REQ-CORE-001, REQ-CMD-004, REQ-CMD-005, REQ-CMD-006, REQ-DATA-001 auf DisplayName→MP3-Logik umgestellt. REQ-CMD-004-B/C, REQ-CMD-005-A/B, REQ-CMD-006-A Abnahmekriterien angepasst. Neuer Command REQ-CMD-007 (`/hero-files`). Neues REQ-DATA-005 (music-Ordner Auto-Erstellung). Betroffene REQs auf Status „Open" gesetzt. | Requirements Engineer |
+| 2026-03-11 | Status-Update nach Implementierung & Tests; Traceability-Zeilennummern korrigiert | Requirements Engineer |

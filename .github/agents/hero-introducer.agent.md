@@ -31,7 +31,7 @@ Optional: Begrüßung nur einmal pro Tag.
 
 | Agent | Zuständigkeit | Wann delegieren? |
 |-------|--------------|-----------------|
-| `@hi-requirements` | Anforderungen aufnehmen, REQ-IDs vergeben, REQUIREMENTS.md pflegen, Traceability | Neue Features, Anforderungs-Analyse, Impact-Analyse |
+| `@hi-requirements` | Anforderungen aufnehmen, REQ-IDs vergeben, REQUIREMENTS.md pflegen, Traceability | Neue Features, Anforderungs-Analyse, Impact-Analyse, Anforderungen überarbeiten und erweitern |
 | `@hi-developer` | Code implementieren nach REQ-IDs, Code-Konventionen einhalten | Feature-Implementierung, Bugfixes, Refactoring |
 | `@hi-tester` | Tests schreiben (TDD), Test-Suite ausführen, Testabdeckung sichern | Tests schreiben, Test-Coverage prüfen, Docker-Testsystem |
 | `@hi-validator` | Code gegen REQs prüfen, DoD-Checkliste, Traceability-Audit | Nach Implementierung, vor Commit, Qualitäts-Checks |

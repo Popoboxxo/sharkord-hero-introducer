@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------
+# Sharkord Dev Stack – Hero Introducer Plugin
+# ---------------------------------------------------------------------------
+# Usage:
+#   1. bun run build                          # build the plugin first
+#   2. docker compose -f docker-compose.dev.yml up
+#   3. docker logs sharkord-dev -f            # watch logs / grab access token
+#   4. docker compose -f docker-compose.dev.yml down
+#
+# After plugin changes:
+#   bun run build
+#   docker compose -f docker-compose.dev.yml restart sharkord
+# ---------------------------------------------------------------------------
+
+services:
+  sharkord:
+    image: ghcr.io/sharkord/sharkord:latest
+    container_name: sharkord-dev
+    ports:
+      - "3000:3000"                           # Sharkord Web UI
+      - "40000-40200:40000-40200/udp"          # mediasoup RTP media ports
+    volumes:
+      # Mount the built plugin into Sharkord's plugins directory
+      - ./dist/sharkord-hero-introducer:/app/plugins/sharkord-hero-introducer
+      # Persistent data (DB, user data, etc.)
+      - sharkord-data:/app/data
+      # Optional: mount test MP3 files for hero-set testing
+      - ./tests/fixtures:/app/test-fixtures:ro
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    cap_add:
+      - SYS_NICE                              # mediasoup worker thread priority
+    restart: unless-stopped
+
+volumes:
+  sharkord-data:

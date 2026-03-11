@@ -15,7 +15,10 @@
   "type": "module",
   "scripts": {
     "build": "bun build.ts",
-    "build:zip": "bun run build && zip -r sharkord-hero-introducer.zip dist/*"
+    "build:zip": "bun run build && zip -r sharkord-hero-introducer.zip dist/*",
+    "test": "bun test",
+    "test:unit": "bun test tests/unit/",
+    "test:integration": "bun test tests/integration/"
   },
   "devDependencies": {
     "@types/bun": "latest",

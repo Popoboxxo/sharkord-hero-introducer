@@ -7,7 +7,7 @@ import path from "path";
 // Types
 // ---------------------------------------------------------------------------
 
-/** Maps userId (string) → absolute path of the MP3 file on the server. */
+/** Maps displayName (string) → mp3FileName (string) in the music directory. */
 type MusicMap = Record<string, string>;
 
 /** Maps userId (string) → ISO date string "YYYY-MM-DD" of the last greeting. */
@@ -44,11 +44,13 @@ const onLoad = async (ctx: PluginContext) => {
 
   // Persistent data paths (inside the plugin's own data directory)
   const dataDir = path.join(ctx.path, "data");
+  const musicDir = path.join(ctx.path, "music");
   const musicMapFile = path.join(dataDir, "music-map.json");
   const dailyGreetsFile = path.join(dataDir, "daily-greets.json");
 
-  // Ensure data directory exists
+  // Ensure data and music directories exist
   await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(musicDir, { recursive: true });
 
   // ---------------------------------------------------------------------------
   // Settings
@@ -110,16 +112,16 @@ const onLoad = async (ctx: PluginContext) => {
       return;
     }
 
-    // Load the music map
+    // Load the music map (keyed by displayName / username)
     const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-    const mp3Path = musicMap[String(userId)];
+    const mp3FileName = musicMap[username];
 
-    if (!mp3Path) {
+    if (!mp3FileName) {
       ctx.debug(`No intro configured for user ${username} (${userId})`);
       return;
     }
 
-    // Check once-per-day setting
+    // Check once-per-day setting (tracked by userId for uniqueness)
     const oncePerDay = settings.get("oncePerDay");
     if (oncePerDay) {
       const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
@@ -131,6 +133,9 @@ const onLoad = async (ctx: PluginContext) => {
         return;
       }
     }
+
+    // Resolve full path from music directory
+    const mp3Path = path.join(musicDir, mp3FileName);
 
     // Verify the MP3 file exists
     try {
@@ -196,78 +201,79 @@ const onLoad = async (ctx: PluginContext) => {
     },
   });
 
-  // /hero-set <userId> <filePath>
-  ctx.commands.register<{ userId: string; filePath: string }>({
+  // /hero-set <displayName> <mp3FileName>
+  ctx.commands.register<{ displayName: string; mp3FileName: string }>({
     name: "hero-set",
     description:
-      "Map an MP3 file to a user. Usage: /hero-set <userId> <absoluteFilePath>",
+      "Map an MP3 file to a user. Usage: /hero-set <displayName> <mp3FileName>",
     args: [
       {
-        name: "userId",
+        name: "displayName",
         type: "string",
-        description: "The numeric user ID to configure the intro for.",
+        description: "The display name of the user to configure the intro for.",
         required: true,
         sensitive: false,
       },
       {
-        name: "filePath",
+        name: "mp3FileName",
         type: "string",
-        description: "Absolute path to the MP3 file on the server.",
+        description: "File name of the MP3 file in the music directory (e.g. john-intro.mp3).",
         required: true,
         sensitive: false,
       },
     ],
     async executes(
       _invokerCtx: TInvokerContext,
-      args: { userId: string; filePath: string },
+      args: { displayName: string; mp3FileName: string },
     ) {
-      const { userId, filePath } = args;
-      if (!filePath.toLowerCase().endsWith(".mp3")) {
+      const { displayName, mp3FileName } = args;
+      if (!mp3FileName.toLowerCase().endsWith(".mp3")) {
         return "❌ Only MP3 files are supported.";
       }
+      const fullPath = path.join(musicDir, mp3FileName);
       try {
-        await fs.access(filePath);
+        await fs.access(fullPath);
       } catch {
-        return `❌ File not found: ${filePath}`;
+        return `❌ File not found in music directory: ${mp3FileName}`;
       }
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-      musicMap[userId] = filePath;
+      musicMap[displayName] = mp3FileName;
       await writeJsonFile(musicMapFile, musicMap);
-      return `✅ Intro set for user ${userId}: ${filePath}`;
+      return `✅ Intro set for ${displayName}: ${mp3FileName}`;
     },
   });
 
-  // /hero-remove <userId>
-  ctx.commands.register<{ userId: string }>({
+  // /hero-remove <displayName>
+  ctx.commands.register<{ displayName: string }>({
     name: "hero-remove",
     description: "Remove the intro music mapping for a user.",
     args: [
       {
-        name: "userId",
+        name: "displayName",
         type: "string",
-        description: "The numeric user ID whose intro mapping should be removed.",
+        description: "The display name of the user whose intro mapping should be removed.",
         required: true,
         sensitive: false,
       },
     ],
     async executes(
       _invokerCtx: TInvokerContext,
-      args: { userId: string },
+      args: { displayName: string },
     ) {
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-      if (!musicMap[args.userId]) {
-        return `ℹ️ No intro configured for user ${args.userId}.`;
+      if (!musicMap[args.displayName]) {
+        return `ℹ️ No intro configured for ${args.displayName}.`;
       }
-      delete musicMap[args.userId];
+      delete musicMap[args.displayName];
       await writeJsonFile(musicMapFile, musicMap);
-      return `🗑️ Intro removed for user ${args.userId}.`;
+      return `🗑️ Intro removed for ${args.displayName}.`;
     },
   });
 
   // /hero-list
   ctx.commands.register({
     name: "hero-list",
-    description: "List all configured user → MP3 mappings.",
+    description: "List all configured DisplayName → MP3 mappings.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
@@ -275,8 +281,29 @@ const onLoad = async (ctx: PluginContext) => {
       if (entries.length === 0) {
         return "ℹ️ No intro mappings configured yet.";
       }
-      const lines = entries.map(([uid, file]) => `• User ${uid}: ${file}`);
+      const lines = entries.map(([displayName, mp3FileName]) => `• ${displayName}: ${mp3FileName}`);
       return `**Intro Mappings**\n${lines.join("\n")}`;
+    },
+  });
+
+  // /hero-files
+  ctx.commands.register({
+    name: "hero-files",
+    description: "List all available MP3 files in the music directory.",
+    args: [],
+    async executes(_invokerCtx: TInvokerContext) {
+      let files: string[];
+      try {
+        const dirEntries = await fs.readdir(musicDir);
+        files = dirEntries.filter((f) => f.toLowerCase().endsWith(".mp3"));
+      } catch {
+        files = [];
+      }
+      if (files.length === 0) {
+        return "ℹ️ No MP3 files found in the music directory.";
+      }
+      const lines = files.map((f) => `• ${f}`);
+      return `**Available MP3 Files**\n${lines.join("\n")}`;
     },
   });
 

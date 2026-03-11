@@ -1,4 +1,4 @@
-# sharkord-hero-introducer
+# sharkord-A
 
 A [Sharkord](https://sharkord.com) plugin that automatically plays a personalised **MP3 intro** for each user the moment they join a voice channel.
 
@@ -55,8 +55,8 @@ Restart Sharkord and activate the plugin in the Plugins settings page.
 ### Example
 
 ```
-/hero-set 42 /home/sharkord/music/john-intro.mp3
-/hero-set 17 /home/sharkord/music/jane-intro.mp3
+/hero-set popoboxxo john-intro.mp3
+/hero-set eisenbart jane-intro.mp3
 /hero-list
 /hero-disable
 /hero-enable
