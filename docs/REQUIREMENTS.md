@@ -21,10 +21,10 @@
 
 | REQ-ID | Beschreibung | Status | Priorität | Traceability |
 |--------|-------------|--------|-----------|--------------|
-| REQ-CORE-001 | Wenn ein User dem Sharkord-Server beitritt (`user:joined`-Event), wird anhand des `username` aus dem Event in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der MP3-Pfad als `path.join(pluginDir, "music", mp3FileName)` aufgelöst und das Intro automatisch im ersten aktiven Voice-Channel abgespielt. | Implemented | Must | `src/server.ts` L108–L159 |
+| REQ-CORE-001 | Wenn ein User dem Sharkord-Server beitritt (`user:joined`-Event), wird anhand des `username` aus dem Event in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst und das Intro automatisch im ersten aktiven Voice-Channel abgespielt. Das Plugin unterstützt `.mp3` und `.mpeg` Dateien. | Implemented | Must | `src/server.ts` L108–L159 |
 | REQ-CORE-002 | Wenn für einen User kein MP3-Mapping konfiguriert ist, erfolgt **keine** Audiowiedergabe und **kein** Fehler. | Implemented | Must | `src/server.ts` L114–L119 |
 | REQ-CORE-003 | Die MP3-Datei wird vor der Wiedergabe auf Existenz geprüft; fehlt die Datei, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L136–L142 |
-| REQ-CORE-004 | Die Audiowiedergabe erfolgt über `ffmpeg` (MP3 → Opus-RTP) an einen mediasoup `PlainTransport`. Der Stream wird via `ctx.actions.voice.createStream` im Voice-Channel exponiert. | Implemented | Must | `src/server.ts` L291–L400 |
+| REQ-CORE-004 | Die Audiowiedergabe erfolgt über `ffmpeg` (MP3/MPEG → Opus-RTP) an einen mediasoup `PlainTransport`. Der Stream wird via `ctx.actions.voice.createStream` im Voice-Channel exponiert. | Implemented | Must | `src/server.ts` L291–L400 |
 | REQ-CORE-005 | Das Plugin trackt aktive Voice-Channels über die Events `voice:runtime_initialized` und `voice:runtime_closed` in einem lokalen Set. | Implemented | Must | `src/server.ts` L82, L88–L96 |
 | REQ-CORE-006 | Ist kein aktiver Voice-Channel vorhanden, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L300–L303 |
 | REQ-CORE-007 | Nach Ende der Wiedergabe (ffmpeg-Exit oder Fehler) werden Producer, PlainTransport und Stream automatisch aufgeräumt (`close`/`remove`). | Implemented | Must | `src/server.ts` L378–L400 |
@@ -33,7 +33,7 @@
 
 | REQ-ID | Abnahmekriterium |
 |--------|-----------------|
-| REQ-CORE-001 | Ein User mit konfiguriertem MP3-Mapping (Matching über `username` aus `user:joined`-Event) joint → MP3-Pfad wird als `path.join(pluginDir, "music", mp3FileName)` aufgelöst → alle Teilnehmer im Voice-Channel hören das Intro. |
+| REQ-CORE-001 | Ein User mit konfiguriertem Audio-Mapping (Matching über `username` aus `user:joined`-Event) joint → Audio-Pfad wird als `path.join(pluginDir, "music", audioFileName)` aufgelöst → alle Teilnehmer im Voice-Channel hören das Intro. |
 | REQ-CORE-002 | Ein User ohne MP3-Mapping joint → keine hörbare Ausgabe, kein Fehler im Log. |
 | REQ-CORE-003 | MP3 in music-map.json verweist auf nicht-existente Datei → Fehler-Log-Eintrag, keine Wiedergabe. |
 | REQ-CORE-004 | Während der Wiedergabe ist ein ffmpeg-Prozess aktiv und sendet Opus-RTP an den konfigurierten Port. |
@@ -50,10 +50,10 @@
 | REQ-CMD-001 | `/hero-enable` setzt die Einstellung `enabled` auf `true` und bestätigt die Aktivierung per Rückmeldung. | Implemented | Must | `src/server.ts` L160–L170 |
 | REQ-CMD-002 | `/hero-disable` setzt die Einstellung `enabled` auf `false` und bestätigt die Deaktivierung per Rückmeldung. | Implemented | Must | `src/server.ts` L171–L180 |
 | REQ-CMD-003 | `/hero-stop` beendet sofort alle laufenden ffmpeg-Prozesse (SIGTERM) und gibt eine Bestätigung zurück. Sind keine Intros aktiv, wird eine entsprechende Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L182–L197 |
-| REQ-CMD-004 | `/hero-set <displayName> <mp3FileName>` speichert ein DisplayName→MP3-Mapping. Der `mp3FileName` ist nur der Dateiname (nicht der volle Pfad); die Datei wird im festen Verzeichnis `<plugin-dir>/music/` gesucht. Vor dem Speichern wird geprüft, dass der Dateiname auf `.mp3` endet und die Datei im music-Ordner existiert. Fehlerhafte Eingaben werden mit einer Fehlermeldung quittiert. | Implemented | Must | `src/server.ts` L205–L244 |
+| REQ-CMD-004 | `/hero-set <displayName> <audioFileName>` speichert ein DisplayName→Audio-Mapping. Der `audioFileName` ist nur der Dateiname (nicht der volle Pfad); die Datei wird im festen Verzeichnis `<plugin-dir>/music/` gesucht. Vor dem Speichern wird geprüft, dass der Dateiname auf `.mp3` oder `.mpeg` endet und die Datei im music-Ordner existiert. Fehlerhafte Eingaben werden mit einer Fehlermeldung quittiert. | Implemented | Must | `src/server.ts` L205–L244 |
 | REQ-CMD-005 | `/hero-remove <displayName>` entfernt das MP3-Mapping für den angegebenen DisplayName. Existiert kein Mapping, wird eine Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L247–L272 |
-| REQ-CMD-006 | `/hero-list` gibt eine formatierte Liste aller DisplayName→MP3-Zuordnungen im Format `DisplayName: mp3FileName` zurück. Sind keine Mappings vorhanden, wird eine entsprechende Info-Meldung angezeigt. | Implemented | Must | `src/server.ts` L274–L288 |
-| REQ-CMD-007 | `/hero-files` listet alle verfügbaren MP3-Dateien auf, die im Verzeichnis `<plugin-dir>/music/` liegen. So kann der Admin sehen, welche Dateien zum Zuordnen verfügbar sind. | Implemented | Should | `src/server.ts` L290–L310 |
+| REQ-CMD-006 | `/hero-list` gibt eine formatierte Liste aller DisplayName→Audio-Zuordnungen im Format `DisplayName: audioFileName` zurück. Sind keine Mappings vorhanden, wird eine entsprechende Info-Meldung angezeigt. | Implemented | Must | `src/server.ts` L274–L288 |
+| REQ-CMD-007 | `/hero-files` listet alle verfügbaren Audio-Dateien (`.mp3` und `.mpeg`) auf, die im Verzeichnis `<plugin-dir>/music/` liegen. So kann der Admin sehen, welche Dateien zum Zuordnen verfügbar sind. | Implemented | Should | `src/server.ts` L290–L310 |
 
 ### Abnahmekriterien REQ-CMD
 
@@ -62,15 +62,15 @@
 | REQ-CMD-001 | Ausführung → Setting `enabled` ist `true`, Rückmeldung enthält Bestätigung. |
 | REQ-CMD-002 | Ausführung → Setting `enabled` ist `false`, Rückmeldung enthält Bestätigung. |
 | REQ-CMD-003 | Bei laufenden Intros: alle ffmpeg-Prozesse beendet, `activeProcesses`-Map leer. Ohne laufende Intros: Info-Meldung. |
-| REQ-CMD-004-A | Dateiendung ist nicht `.mp3` → Fehlermeldung "Only MP3 files are supported." |
-| REQ-CMD-004-B | MP3-Datei existiert nicht im `<plugin-dir>/music/`-Ordner → Fehlermeldung. |
-| REQ-CMD-004-C | Gültige MP3-Datei im music-Ordner → Mapping `displayName → mp3FileName` in `music-map.json` gespeichert, Bestätigung. |
+| REQ-CMD-004-A | Dateiendung ist weder `.mp3` noch `.mpeg` → Fehlermeldung "Only MP3 and MPEG files are supported." |
+| REQ-CMD-004-B | Audio-Datei existiert nicht im `<plugin-dir>/music/`-Ordner → Fehlermeldung. |
+| REQ-CMD-004-C | Gültige `.mp3` oder `.mpeg` Datei im music-Ordner → Mapping `displayName → audioFileName` in `music-map.json` gespeichert, Bestätigung. |
 | REQ-CMD-005-A | Bestehende Zuordnung für DisplayName → Eintrag entfernt, Bestätigung. |
 | REQ-CMD-005-B | Keine Zuordnung für DisplayName vorhanden → Info-Meldung. |
-| REQ-CMD-006-A | Mindestens ein Mapping vorhanden → formatierte Liste mit `DisplayName: mp3FileName`. |
+| REQ-CMD-006-A | Mindestens ein Mapping vorhanden → formatierte Liste mit `DisplayName: audioFileName`. |
 | REQ-CMD-006-B | Keine Mappings → Info-Meldung "No intro mappings configured yet." |
-| REQ-CMD-007-A | Mindestens eine MP3-Datei im music-Ordner → formatierte Liste der Dateinamen. |
-| REQ-CMD-007-B | Keine Dateien im music-Ordner → Info-Meldung. |
+| REQ-CMD-007-A | Mindestens eine `.mp3` oder `.mpeg` Datei im music-Ordner → formatierte Liste der Dateinamen. |
+| REQ-CMD-007-B | Keine Audio-Dateien (`.mp3`/`.mpeg`) im music-Ordner → Info-Meldung. |
 
 ---
 
@@ -98,11 +98,12 @@
 
 | REQ-ID | Beschreibung | Status | Priorität | Traceability |
 |--------|-------------|--------|-----------|--------------|
-| REQ-DATA-001 | Die DisplayName→MP3-Zuordnungen (`displayName → mp3FileName`) werden persistent als JSON in `<plugin-data-dir>/data/music-map.json` gespeichert. | Implemented | Must | `src/server.ts` L48 |
-| REQ-DATA-002 | Die Daily-Greet-Einträge (User-ID → ISO-Datum `YYYY-MM-DD`) werden persistent als JSON in `<plugin-data-dir>/data/daily-greets.json` gespeichert. | Implemented | Must | `src/server.ts` L48 |
-| REQ-DATA-003 | Das Datenverzeichnis `<plugin-data-dir>/data/` wird beim Plugin-Start automatisch erstellt, falls es nicht existiert. | Implemented | Must | `src/server.ts` L51 |
+| REQ-DATA-001 | Die DisplayName→Audio-Zuordnungen (`displayName → audioFileName`, kann `.mp3` oder `.mpeg` sein) werden persistent als JSON in `<plugin-data-dir>/data/music-map.json` gespeichert. | Implemented | Must | `src/server.ts` L48 |
+| REQ-DATA-002 | Die Daily-Greet-Einträge (User-ID → ISO-Datum `YYYY-MM-DD`) werden persistent als JSON in `<plugin-data-dir>/data/daily-greets.json` gespeichert. | Implemented | Must | `src/server.ts` L49 |
+| REQ-DATA-003 | Das Datenverzeichnis `<plugin-data-dir>/data/` wird beim Plugin-Start automatisch erstellt, falls es nicht existiert. | Implemented | Must | `src/server.ts` L53 |
 | REQ-DATA-004 | Fehlt eine JSON-Datei beim Lesen (z.B. erster Start), wird ein definierter Fallback-Wert (`{}`) verwendet, statt einen Fehler zu werfen. | Implemented | Must | `src/server.ts` L24–L31 |
-| REQ-DATA-005 | Das Verzeichnis `<plugin-dir>/music/` wird beim Plugin-Start automatisch erstellt, falls es nicht existiert. Dies ist der feste Ablageordner für alle MP3-Dateien. | Implemented | Must | `src/server.ts` L53 |
+| REQ-DATA-005 | Das Verzeichnis `<plugin-dir>/music/` wird beim Plugin-Start automatisch erstellt, falls es nicht existiert. Dies ist der feste Ablageordner für alle Audio-Dateien (`.mp3`, `.mpeg`). | Implemented | Must | `src/server.ts` L54 |
+| REQ-DATA-006 | Beim Start des Docker-Testsystems werden die Testdateien aus `tests/test_music/` automatisch in den Plugin-music-Ordner gemountet, sodass sie sofort zum Testen verfügbar sind. | Implemented | Should | `docker-compose.dev.yml` L28 |
 
 ### Abnahmekriterien REQ-DATA
 
@@ -113,6 +114,7 @@
 | REQ-DATA-003 | Plugin startet in leerem Verzeichnis → `data/`-Ordner wird angelegt. |
 | REQ-DATA-004 | Plugin startet ohne vorhandene `music-map.json` → leeres Objekt `{}` wird verwendet, kein Crash. |
 | REQ-DATA-005 | Plugin startet in Umgebung ohne `music/`-Ordner → Ordner `<plugin-dir>/music/` wird automatisch angelegt. |
+| REQ-DATA-006 | Docker-Testsystem gestartet → Dateien aus `tests/test_music/` sind im Plugin-music-Ordner verfügbar. |
 
 ---
 
@@ -178,10 +180,11 @@
 | REQ-CFG-002 | `src/server.ts` L64–L72 | — (offen) |
 | REQ-CFG-003 | `src/server.ts` L283 | — (offen) |
 | REQ-DATA-001 | `src/server.ts` L48 | — (offen) |
-| REQ-DATA-002 | `src/server.ts` L48 | — (offen) |
-| REQ-DATA-003 | `src/server.ts` L51 | `tests/unit/server.test.ts` |
+| REQ-DATA-002 | `src/server.ts` L49 | — (offen) |
+| REQ-DATA-003 | `src/server.ts` L53 | `tests/unit/server.test.ts` |
 | REQ-DATA-004 | `src/server.ts` L24–L31 | — (offen) |
-| REQ-DATA-005 | `src/server.ts` L53 | `tests/unit/server.test.ts` |
+| REQ-DATA-005 | `src/server.ts` L54 | `tests/unit/server.test.ts` |
+| REQ-DATA-006 | `docker-compose.dev.yml` L28 | — (offen) |
 | REQ-LIFE-001 | `src/server.ts` L42, L410 | `tests/unit/server.test.ts` |
 | REQ-LIFE-002 | `src/server.ts` L406–L410 | `tests/unit/server.test.ts` |
 | REQ-LIFE-003 | `build.ts` L1–L63 | `tests/unit/build.test.ts` |
@@ -200,6 +203,7 @@
 - **REQ-CMD-001 bis REQ-CMD-003** — Enable/Disable/Stop-Commands nicht getestet.
 - **REQ-CFG-002, REQ-CFG-003** — Settings `oncePerDay` und UI-Aktivierung nicht getestet.
 - **REQ-DATA-001, REQ-DATA-002, REQ-DATA-004** — JSON-Persistenz (Pfade, Daily-Greets, Fallback) nicht getestet.
+- **REQ-DATA-006** — Docker-Testdateien-Mount nicht getestet.
 - **REQ-LIFE-004** — Leerer Client-Entry-Point nicht getestet.
 - **REQ-NF-001 bis REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
 
@@ -211,10 +215,10 @@
 - **REQ-LIFE-001, REQ-LIFE-002** — onLoad/onUnload (`tests/unit/server.test.ts`)
 - **REQ-LIFE-003, REQ-NF-003** — Build-Prozess (`tests/unit/build.test.ts`)
 
-### Empfehlung an Developer/Tester:
-1. **Höchste Priorität:** Unit-Tests für REQ-CORE-002, REQ-CORE-003, REQ-CFG-002 — Kern-Use-Cases ohne Testabdeckung.
+### Empfehlung:
+1. **Höchste Priorität:** Unit-Tests für REQ-CORE-002, REQ-CORE-003, REQ-CFG-002.
 2. **Hohe Priorität:** Tests für REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop).
-3. **Mittlere Priorität:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004) mit temporärem Dateisystem.
+3. **Mittlere Priorität:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004).
 
 ---
 
@@ -223,5 +227,5 @@
 | Datum | Änderung | Autor |
 |-------|----------|-------|
 | 2026-03-11 | Initiale Erfassung aller Requirements aus Implementierungsstand v0.1.0 | Requirements Engineer |
-| 2026-03-11 | **DisplayName-Refactoring:** REQ-CORE-001, REQ-CMD-004, REQ-CMD-005, REQ-CMD-006, REQ-DATA-001 auf DisplayName→MP3-Logik umgestellt. REQ-CMD-004-B/C, REQ-CMD-005-A/B, REQ-CMD-006-A Abnahmekriterien angepasst. Neuer Command REQ-CMD-007 (`/hero-files`). Neues REQ-DATA-005 (music-Ordner Auto-Erstellung). Betroffene REQs auf Status „Open" gesetzt. | Requirements Engineer |
-| 2026-03-11 | Status-Update nach Implementierung & Tests; Traceability-Zeilennummern korrigiert | Requirements Engineer |
+| 2026-03-11 | DisplayName-Refactoring: REQ-CORE-001, REQ-CMD-004/005/006, REQ-DATA-001 auf DisplayName→Audio-Logik umgestellt. REQ-CMD-007 (`/hero-files`) und REQ-DATA-005 (music-Ordner) hinzugefügt. | Requirements Engineer |
+| 2026-03-11 | MPEG-Support: REQ-CORE-001/004, REQ-CMD-004/007, REQ-DATA-001 um `.mpeg` Unterstützung erweitert. REQ-DATA-006 (Docker-Test-Musik-Mount) hinzugefügt. | Requirements Engineer |

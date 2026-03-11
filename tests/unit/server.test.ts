@@ -126,14 +126,14 @@ describe("Plugin onLoad – commands & data", () => {
   // -- REQ-CMD-004: /hero-set ---------------------------------------------
 
   describe("/hero-set", () => {
-    it("[REQ-CMD-004] should reject non-.mp3 file names", async () => {
+    it("[REQ-CMD-004] should reject non-.mp3/.mpeg file names", async () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
       const result = await heroSet.executes(
         {},
-        { displayName: "TestUser", mp3FileName: "intro.wav" },
+        { displayName: "TestUser", audioFileName: "intro.wav" },
       );
-      expect(result).toContain("Only MP3 files are supported");
+      expect(result).toContain("Only MP3 and MPEG files are supported");
     });
 
     it("[REQ-CMD-004] should reject files that do not exist in the music directory", async () => {
@@ -141,7 +141,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroSet = commands.get("hero-set")!;
       const result = await heroSet.executes(
         {},
-        { displayName: "TestUser", mp3FileName: "missing.mp3" },
+        { displayName: "TestUser", audioFileName: "missing.mp3" },
       );
       expect(result).toContain("File not found");
     });
@@ -155,7 +155,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroSet = commands.get("hero-set")!;
       const result = await heroSet.executes(
         {},
-        { displayName: "TestUser", mp3FileName: "intro.mp3" },
+        { displayName: "TestUser", audioFileName: "intro.mp3" },
       );
 
       expect(result).toContain("Intro set for TestUser");
@@ -165,6 +165,25 @@ describe("Plugin onLoad – commands & data", () => {
       const raw = await fs.readFile(path.join(dataDir, "music-map.json"), "utf8");
       const map = JSON.parse(raw);
       expect(map["TestUser"]).toBe("intro.mp3");
+    });
+
+    it("[REQ-CMD-004] should accept .mpeg files", async () => {
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "intro.mpeg"), "fake-mpeg-data");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroSet = commands.get("hero-set")!;
+      const result = await heroSet.executes(
+        {},
+        { displayName: "MpegUser", audioFileName: "intro.mpeg" },
+      );
+
+      expect(result).toContain("Intro set for MpegUser");
+      expect(result).toContain("intro.mpeg");
+
+      const raw = await fs.readFile(path.join(dataDir, "music-map.json"), "utf8");
+      const map = JSON.parse(raw);
+      expect(map["MpegUser"]).toBe("intro.mpeg");
     });
   });
 
@@ -226,26 +245,26 @@ describe("Plugin onLoad – commands & data", () => {
   // -- REQ-CMD-007: /hero-files -------------------------------------------
 
   describe("/hero-files", () => {
-    it("[REQ-CMD-007] should list .mp3 files from the music directory", async () => {
+    it("[REQ-CMD-007] should list .mp3 and .mpeg files from the music directory", async () => {
       await fs.mkdir(musicDir, { recursive: true });
       await fs.writeFile(path.join(musicDir, "intro.mp3"), "fake");
-      await fs.writeFile(path.join(musicDir, "theme.mp3"), "fake");
-      await fs.writeFile(path.join(musicDir, "readme.txt"), "not an mp3");
+      await fs.writeFile(path.join(musicDir, "theme.mpeg"), "fake");
+      await fs.writeFile(path.join(musicDir, "readme.txt"), "not audio");
 
       const { commands } = await loadPlugin(tmpDir);
       const heroFiles = commands.get("hero-files")!;
       const result = await heroFiles.executes({});
 
       expect(result).toContain("intro.mp3");
-      expect(result).toContain("theme.mp3");
+      expect(result).toContain("theme.mpeg");
       expect(result).not.toContain("readme.txt");
     });
 
-    it("[REQ-CMD-007] should return info when no .mp3 files exist", async () => {
+    it("[REQ-CMD-007] should return info when no audio files exist", async () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroFiles = commands.get("hero-files")!;
       const result = await heroFiles.executes({});
-      expect(result).toContain("No MP3 files found");
+      expect(result).toContain("No audio files found");
     });
   });
 

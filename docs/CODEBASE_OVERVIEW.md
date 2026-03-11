@@ -21,13 +21,20 @@
 
 | Type | Definition | REQ |
 |------|-----------|-----|
-| `MusicMap` | `Record<string, string>` — displayName → mp3FileName | REQ-DATA-001 |
+| `MusicMap` | `Record<string, string>` — displayName → audioFileName (.mp3 oder .mpeg) | REQ-DATA-001 |
 | `DailyGreets` | `Record<string, string>` — userId → ISO-Datum `"YYYY-MM-DD"` | REQ-DATA-002 |
+
+### Konstanten
+
+| Konstante | Wert | Beschreibung | REQ |
+|-----------|------|-------------|-----|
+| `SUPPORTED_EXTENSIONS` | `[".mp3", ".mpeg"]` | Unterstützte Audio-Dateiendungen | REQ-CMD-004, REQ-CMD-007 |
 
 ### Interne Hilfsfunktionen
 
 | Funktion | Signatur | Beschreibung | REQ |
 |----------|----------|-------------|-----|
+| `isSupportedAudioFile` | `(fileName: string) => boolean` | Prüft ob Dateiname auf unterstützte Endung endet (`.mp3` oder `.mpeg`) | REQ-CMD-004, REQ-CMD-007 |
 | `todayISO` | `() => string` | Gibt heutiges Datum als `"YYYY-MM-DD"` zurück | REQ-CFG-002 |
 | `readJsonFile` | `<T>(filePath: string, fallback: T) => Promise<T>` | Liest JSON-Datei, bei Fehler → `fallback` | REQ-DATA-004 |
 | `writeJsonFile` | `(filePath: string, data: unknown) => Promise<void>` | Schreibt JSON mit `mkdir -p` für Parent-Dir | REQ-DATA-001, REQ-DATA-002 |
@@ -70,10 +77,10 @@
 | `/hero-enable` | — | Setzt `enabled=true`, Bestätigung | REQ-CMD-001 |
 | `/hero-disable` | — | Setzt `enabled=false`, Bestätigung | REQ-CMD-002 |
 | `/hero-stop` | — | Killt alle ffmpeg-Prozesse (SIGTERM), leert `activeProcesses` | REQ-CMD-003 |
-| `/hero-set` | `displayName: string`, `mp3FileName: string` | Validiert `.mp3`-Endung + Datei-Existenz, speichert Mapping | REQ-CMD-004 |
+| `/hero-set` | `displayName: string`, `audioFileName: string` | Validiert unterstützte Endung (`.mp3`/`.mpeg`) + Datei-Existenz, speichert Mapping | REQ-CMD-004 |
 | `/hero-remove` | `displayName: string` | Löscht Mapping aus MusicMap | REQ-CMD-005 |
-| `/hero-list` | — | Listet alle DisplayName→MP3-Zuordnungen | REQ-CMD-006 |
-| `/hero-files` | — | Listet alle `.mp3`-Dateien im music-Ordner | REQ-CMD-007 |
+| `/hero-list` | — | Listet alle DisplayName→audioFileName-Zuordnungen | REQ-CMD-006 |
+| `/hero-files` | — | Listet alle `.mp3`- und `.mpeg`-Dateien im music-Ordner | REQ-CMD-007 |
 
 Abschließend: `ctx.ui.enable()` (REQ-CFG-003).
 
@@ -84,7 +91,7 @@ async function playIntroForUser(
   ctx: PluginContext,
   userId: number,
   username: string,
-  mp3Path: string,
+  audioPath: string,
   activeProcesses: Map<number, ReturnType<typeof spawn>>,
   activeChannels: Set<number>,
 ): Promise<void>
@@ -165,7 +172,7 @@ user:joined(userId, username)
   │
   ├─ oncePerDay && bereits heute begrüßt? → Debug-Log, return
   │
-  ├─ MP3-Datei existiert nicht? → Error-Log, return
+  ├─ Audio-Datei existiert nicht? → Error-Log, return
   │
   └─ playIntroForUser()
        │
@@ -175,7 +182,7 @@ user:joined(userId, username)
        │
        ├─ createStream() → Channel-Stream exponieren
        │
-       ├─ ffmpeg spawnen (MP3 → Opus RTP)
+       ├─ ffmpeg spawnen (MP3/MPEG → Opus RTP)
        │
        └─ Bei ffmpeg close/error:
             └─ Cleanup: activeProcesses, stream, producer, transport
@@ -184,13 +191,13 @@ user:joined(userId, username)
 ### Flow 2: /hero-set → Mapping speichern
 
 ```
-/hero-set <displayName> <mp3FileName>
+/hero-set <displayName> <audioFileName>
   │
-  ├─ Endung != .mp3? → Fehlermeldung
+  ├─ Keine unterstützte Endung (.mp3/.mpeg)? → Fehlermeldung
   │
   ├─ Datei nicht in music/? → Fehlermeldung
   │
-  └─ readJsonFile(musicMap) → Map[displayName] = mp3FileName → writeJsonFile
+  └─ readJsonFile(musicMap) → Map[displayName] = audioFileName → writeJsonFile
 ```
 
 ### Flow 3: Build
@@ -211,9 +218,20 @@ bun build.ts
 
 | Datei | Pfad | Format | Inhalt |
 |-------|------|--------|--------|
-| MusicMap | `<plugin-dir>/data/music-map.json` | JSON | `{ displayName: mp3FileName }` |
+| MusicMap | `<plugin-dir>/data/music-map.json` | JSON | `{ displayName: audioFileName }` |
 | DailyGreets | `<plugin-dir>/data/daily-greets.json` | JSON | `{ userId: "YYYY-MM-DD" }` |
-| MP3-Dateien | `<plugin-dir>/music/*.mp3` | Binär | Intro-Musik-Dateien |
+| Audio-Dateien | `<plugin-dir>/music/*.mp3, *.mpeg` | Binär | Intro-Musik-Dateien |
+
+---
+
+## Docker-Testsystem
+
+| Datei | Zweck |
+|-------|-------|
+| `docker-compose.dev.yml` | Mountet `tests/test_music/` nach Plugin-music-Ordner für Integrationstests |
+
+**Test-Audiodateien** (`tests/test_music/`):
+`dottin.mpeg`, `eisenbart.mpeg`, `icemage.mpeg`, `maintank.mpeg`, `vibecodin.mpeg`
 
 ---
 
@@ -221,6 +239,6 @@ bun build.ts
 
 | Test-Datei | Anzahl Tests | Themen |
 |------------|-------------|--------|
-| `tests/unit/server.test.ts` | 17 | Commands, Data-Persistenz, Lifecycle |
+| `tests/unit/server.test.ts` | 18 | Commands, Data-Persistenz, Lifecycle, MPEG-Datei-Akzeptanz |
 | `tests/unit/build.test.ts` | 4 | Build-Output, Externals |
 | `tests/helpers/mock-plugin-context.ts` | — | PluginContext Mock-Factory |

@@ -7,7 +7,7 @@ import path from "path";
 // Types
 // ---------------------------------------------------------------------------
 
-/** Maps displayName (string) → mp3FileName (string) in the music directory. */
+/** Maps displayName (string) → audioFileName (string, .mp3 or .mpeg) in the music directory. */
 type MusicMap = Record<string, string>;
 
 /** Maps userId (string) → ISO date string "YYYY-MM-DD" of the last greeting. */
@@ -16,6 +16,14 @@ type DailyGreets = Record<string, string>;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Supported audio file extensions for intro music. */
+const SUPPORTED_EXTENSIONS = [".mp3", ".mpeg"];
+
+function isSupportedAudioFile(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return SUPPORTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
@@ -114,9 +122,9 @@ const onLoad = async (ctx: PluginContext) => {
 
     // Load the music map (keyed by displayName / username)
     const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-    const mp3FileName = musicMap[username];
+    const audioFileName = musicMap[username];
 
-    if (!mp3FileName) {
+    if (!audioFileName) {
       ctx.debug(`No intro configured for user ${username} (${userId})`);
       return;
     }
@@ -135,20 +143,20 @@ const onLoad = async (ctx: PluginContext) => {
     }
 
     // Resolve full path from music directory
-    const mp3Path = path.join(musicDir, mp3FileName);
+    const audioPath = path.join(musicDir, audioFileName);
 
-    // Verify the MP3 file exists
+    // Verify the audio file exists
     try {
-      await fs.access(mp3Path);
+      await fs.access(audioPath);
     } catch {
       ctx.error(
-        `Intro file not found for user ${username}: ${mp3Path}`,
+        `Intro file not found for user ${username}: ${audioPath}`,
       );
       return;
     }
 
     // Play the intro in the first active voice channel
-    await playIntroForUser(ctx, userId, username, mp3Path, activeProcesses, activeChannels);
+    await playIntroForUser(ctx, userId, username, audioPath, activeProcesses, activeChannels);
 
     // Record the greeting date
     if (oncePerDay) {
@@ -201,11 +209,11 @@ const onLoad = async (ctx: PluginContext) => {
     },
   });
 
-  // /hero-set <displayName> <mp3FileName>
-  ctx.commands.register<{ displayName: string; mp3FileName: string }>({
+  // /hero-set <displayName> <audioFileName>
+  ctx.commands.register<{ displayName: string; audioFileName: string }>({
     name: "hero-set",
     description:
-      "Map an MP3 file to a user. Usage: /hero-set <displayName> <mp3FileName>",
+      "Map an audio file to a user. Usage: /hero-set <displayName> <audioFileName>",
     args: [
       {
         name: "displayName",
@@ -215,31 +223,31 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
       {
-        name: "mp3FileName",
+        name: "audioFileName",
         type: "string",
-        description: "File name of the MP3 file in the music directory (e.g. john-intro.mp3).",
+        description: "File name of the audio file in the music directory (e.g. john-intro.mp3 or john-intro.mpeg).",
         required: true,
         sensitive: false,
       },
     ],
     async executes(
       _invokerCtx: TInvokerContext,
-      args: { displayName: string; mp3FileName: string },
+      args: { displayName: string; audioFileName: string },
     ) {
-      const { displayName, mp3FileName } = args;
-      if (!mp3FileName.toLowerCase().endsWith(".mp3")) {
-        return "❌ Only MP3 files are supported.";
+      const { displayName, audioFileName } = args;
+      if (!isSupportedAudioFile(audioFileName)) {
+        return "❌ Only MP3 and MPEG files are supported.";
       }
-      const fullPath = path.join(musicDir, mp3FileName);
+      const fullPath = path.join(musicDir, audioFileName);
       try {
         await fs.access(fullPath);
       } catch {
-        return `❌ File not found in music directory: ${mp3FileName}`;
+        return `❌ File not found in music directory: ${audioFileName}`;
       }
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-      musicMap[displayName] = mp3FileName;
+      musicMap[displayName] = audioFileName;
       await writeJsonFile(musicMapFile, musicMap);
-      return `✅ Intro set for ${displayName}: ${mp3FileName}`;
+      return `✅ Intro set for ${displayName}: ${audioFileName}`;
     },
   });
 
@@ -273,7 +281,7 @@ const onLoad = async (ctx: PluginContext) => {
   // /hero-list
   ctx.commands.register({
     name: "hero-list",
-    description: "List all configured DisplayName → MP3 mappings.",
+    description: "List all configured DisplayName → audio file mappings.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
@@ -281,7 +289,7 @@ const onLoad = async (ctx: PluginContext) => {
       if (entries.length === 0) {
         return "ℹ️ No intro mappings configured yet.";
       }
-      const lines = entries.map(([displayName, mp3FileName]) => `• ${displayName}: ${mp3FileName}`);
+      const lines = entries.map(([displayName, audioFileName]) => `• ${displayName}: ${audioFileName}`);
       return `**Intro Mappings**\n${lines.join("\n")}`;
     },
   });
@@ -289,21 +297,21 @@ const onLoad = async (ctx: PluginContext) => {
   // /hero-files
   ctx.commands.register({
     name: "hero-files",
-    description: "List all available MP3 files in the music directory.",
+    description: "List all available audio files (.mp3, .mpeg) in the music directory.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
       let files: string[];
       try {
         const dirEntries = await fs.readdir(musicDir);
-        files = dirEntries.filter((f) => f.toLowerCase().endsWith(".mp3"));
+        files = dirEntries.filter((f) => isSupportedAudioFile(f));
       } catch {
         files = [];
       }
       if (files.length === 0) {
-        return "ℹ️ No MP3 files found in the music directory.";
+        return "ℹ️ No audio files found in the music directory.";
       }
       const lines = files.map((f) => `• ${f}`);
-      return `**Available MP3 Files**\n${lines.join("\n")}`;
+      return `**Available Audio Files**\n${lines.join("\n")}`;
     },
   });
 
