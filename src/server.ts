@@ -620,7 +620,10 @@ async function playIntroForUser(
     debugLog(`Producer created, SSRC=${11111111 + userId}, stream key=hero-intro-${userId}`);
 
     // Spawn ffmpeg to decode the MP3 and send it as RTP/Opus to mediasoup
-    debugLog(`Spawning ffmpeg: -re -i "${mp3Path}" -vn -acodec libopus -f rtp rtp://${rtpIp}:${rtpPort}`);
+    // IMPORTANT: The SSRC must match the one configured in the producer, otherwise
+    // mediasoup will drop the packets and no audio will be forwarded to consumers.
+    const ssrc = 11111111 + userId;
+    debugLog(`Spawning ffmpeg: -re -i "${mp3Path}" -vn -acodec libopus -ssrc ${ssrc} -f rtp rtp://${rtpIp}:${rtpPort}`);
     const ffmpeg = spawn("ffmpeg", [
       "-re",
       "-i", mp3Path,
@@ -629,6 +632,7 @@ async function playIntroForUser(
       "-ab", "128k",
       "-ar", "48000",
       "-ac", "2",
+      "-ssrc", String(ssrc),
       "-f", "rtp",
       `rtp://${rtpIp}:${rtpPort}?pkt_size=1316`,
     ]);
