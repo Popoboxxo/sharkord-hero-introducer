@@ -309,4 +309,299 @@ describe("Plugin onLoad – commands & data", () => {
       expect(noChannelMsg).toHaveLength(1);
     });
   });
+
+  // -- REQ-CMD-009: /hero-set-me ------------------------------------------
+
+  describe("/hero-set-me", () => {
+    it("[REQ-CMD-009] should save mapping for invoker when user is in cache and file is valid", async () => {
+      // Pre-populate user cache so the plugin knows userId 42 → "CachedUser"
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "42": "CachedUser" }),
+      );
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "my-intro.mp3"), "fake-mp3");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroSetMe = commands.get("hero-set-me")!;
+      expect(heroSetMe).toBeDefined();
+
+      const result = await heroSetMe.executes(
+        { userId: 42, currentVoiceChannelId: 1 },
+        { audioFileName: "my-intro.mp3" },
+      );
+
+      expect(result).toContain("CachedUser");
+      expect(result).toContain("my-intro.mp3");
+
+      // Verify persistence
+      const raw = await fs.readFile(path.join(dataDir, "music-map.json"), "utf8");
+      const map = JSON.parse(raw);
+      expect(map["CachedUser"]).toBe("my-intro.mp3");
+    });
+
+    it("[REQ-CMD-009] should return error when user is not in cache", async () => {
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "my-intro.mp3"), "fake-mp3");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroSetMe = commands.get("hero-set-me")!;
+      expect(heroSetMe).toBeDefined();
+
+      const result = await heroSetMe.executes(
+        { userId: 9999, currentVoiceChannelId: 1 },
+        { audioFileName: "my-intro.mp3" },
+      );
+
+      expect(result).toContain("Could not determine your username");
+    });
+
+    it("[REQ-CMD-009] should reject unsupported file extensions", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "42": "CachedUser" }),
+      );
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroSetMe = commands.get("hero-set-me")!;
+      expect(heroSetMe).toBeDefined();
+
+      const result = await heroSetMe.executes(
+        { userId: 42, currentVoiceChannelId: 1 },
+        { audioFileName: "intro.wav" },
+      );
+
+      expect(result).toContain("Only MP3 and MPEG files are supported");
+    });
+  });
+
+  // -- REQ-CMD-011: /hero-play-me -----------------------------------------
+
+  describe("/hero-play-me", () => {
+    it("[REQ-CMD-011] should start playback when user has mapping and is in voice channel", async () => {
+      // Pre-populate user cache and music map
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "42": "HeroUser" }),
+      );
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ HeroUser: "hero.mp3" }),
+      );
+      await fs.writeFile(path.join(musicDir, "hero.mp3"), "fake-mp3");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+      expect(heroPlayMe).toBeDefined();
+
+      const result = await heroPlayMe.executes(
+        { userId: 42, currentVoiceChannelId: 5 },
+      );
+
+      // Should return a success/playing message (not an error)
+      expect(typeof result).toBe("string");
+      expect(result).not.toContain("❌");
+    });
+
+    it("[REQ-CMD-011] should return info when user has no mapping", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "42": "NoMappingUser" }),
+      );
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+      expect(heroPlayMe).toBeDefined();
+
+      const result = await heroPlayMe.executes(
+        { userId: 42, currentVoiceChannelId: 5 },
+      );
+
+      expect(result).toContain("ℹ️");
+    });
+
+    it("[REQ-CMD-011] should return error when user is not in voice channel", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "42": "HeroUser" }),
+      );
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ HeroUser: "hero.mp3" }),
+      );
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+      expect(heroPlayMe).toBeDefined();
+
+      // No currentVoiceChannelId → error
+      const result = await heroPlayMe.executes(
+        { userId: 42 },
+      );
+
+      expect(result).toContain("❌");
+    });
+
+    it("[REQ-CMD-011] should return error when user is not in user cache", async () => {
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+      expect(heroPlayMe).toBeDefined();
+
+      const result = await heroPlayMe.executes(
+        { userId: 9999, currentVoiceChannelId: 5 },
+      );
+
+      expect(result).toContain("❌");
+    });
+  });
+
+  // -- REQ-CMD-012: /hero-play <displayName> ------------------------------
+
+  describe("/hero-play", () => {
+    it("[REQ-CMD-012] should start playback when displayName has mapping and file exists", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice-intro.mp3" }),
+      );
+      await fs.writeFile(path.join(musicDir, "alice-intro.mp3"), "fake-mp3");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
+      expect(heroPlay).toBeDefined();
+
+      const result = await heroPlay.executes(
+        { userId: 1, currentVoiceChannelId: 5 },
+        { displayName: "Alice" },
+      );
+
+      expect(typeof result).toBe("string");
+      expect(result).not.toContain("❌");
+    });
+
+    it("[REQ-CMD-012] should return info when displayName has no mapping", async () => {
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
+      expect(heroPlay).toBeDefined();
+
+      const result = await heroPlay.executes(
+        { userId: 1, currentVoiceChannelId: 5 },
+        { displayName: "UnknownUser" },
+      );
+
+      expect(result).toContain("ℹ️");
+    });
+
+    it("[REQ-CMD-012] should return error when displayName has mapping but file does not exist", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "missing-file.mp3" }),
+      );
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
+      expect(heroPlay).toBeDefined();
+
+      const result = await heroPlay.executes(
+        { userId: 1, currentVoiceChannelId: 5 },
+        { displayName: "Alice" },
+      );
+
+      expect(result).toContain("❌");
+    });
+
+    it("[REQ-CMD-012] should return error when invoker is not in voice channel", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice-intro.mp3" }),
+      );
+      await fs.writeFile(path.join(musicDir, "alice-intro.mp3"), "fake-mp3");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
+      expect(heroPlay).toBeDefined();
+
+      // No currentVoiceChannelId
+      const result = await heroPlay.executes(
+        { userId: 1 },
+        { displayName: "Alice" },
+      );
+
+      expect(result).toContain("❌");
+    });
+  });
+
+  // -- REQ-DBG-001: Debug-Logging ----------------------------------------
+
+  describe("Debug-Logging", () => {
+    it("[REQ-DBG-001] should log [DEBUG] messages to ctx.log when debug=true", async () => {
+      // Pre-populate a mapping so user:joined triggers debugLog calls
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ DebugUser: "debug.mp3" }),
+      );
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+
+      // Enable debug mode AFTER plugin load
+      settings.get = mock((key: string) => {
+        if (key === "enabled") return true;
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return true;
+        return undefined;
+      });
+
+      const userJoinedHandler = events.get("user:joined")!;
+      await userJoinedHandler({ userId: 100, username: "DebugUser" });
+
+      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
+        (c: unknown[]) => String(c[0]),
+      );
+      const debugMessages = logMessages.filter((m: string) => m.includes("[DEBUG]"));
+      expect(debugMessages.length).toBeGreaterThan(0);
+    });
+
+    it("[REQ-DBG-001] should NOT log [DEBUG] messages to ctx.log when debug=false", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ QuietUser: "quiet.mp3" }),
+      );
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+
+      // Ensure debug is off (default)
+      settings.get = mock((key: string) => {
+        if (key === "enabled") return true;
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return false;
+        return undefined;
+      });
+
+      // Clear log calls from plugin initialization
+      (ctx.log as ReturnType<typeof mock>).mockClear();
+
+      const userJoinedHandler = events.get("user:joined")!;
+      await userJoinedHandler({ userId: 200, username: "QuietUser" });
+
+      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
+        (c: unknown[]) => String(c[0]),
+      );
+      const debugMessages = logMessages.filter((m: string) => m.includes("[DEBUG]"));
+      expect(debugMessages).toHaveLength(0);
+    });
+  });
 });

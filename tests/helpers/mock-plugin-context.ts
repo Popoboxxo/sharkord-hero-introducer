@@ -68,6 +68,7 @@ export function createMockPluginContext(
     get: mock((key: string) => {
       if (key === "enabled") return true;
       if (key === "oncePerDay") return true;
+      if (key === "debug") return false;
       return undefined;
     }),
     set: mock(() => {}),

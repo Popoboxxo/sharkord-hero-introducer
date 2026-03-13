@@ -4,7 +4,7 @@
 # Usage:
 #   1. bun run build                          # build the plugin first
 #   2. docker compose -f docker-compose.dev.yml up
-#   3. docker logs sharkord-dev -f            # watch logs / grab access token
+#   3. docker logs hero-introducer-dev -f     # watch logs / grab access token
 #   4. docker compose -f docker-compose.dev.yml down
 #
 # After plugin changes:
@@ -14,18 +14,21 @@
 
 services:
   sharkord:
-    image: ghcr.io/sharkord/sharkord:latest
-    container_name: sharkord-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: hero-introducer-dev
     ports:
-      - "3000:3000"                           # Sharkord Web UI
-      - "40000-40200:40000-40200/udp"          # mediasoup RTP media ports
+      - "4991:4991/tcp"                        # Sharkord Web UI
+      - "40000:40000/tcp"                      # mediasoup signaling
+      - "40000:40000/udp"                      # mediasoup RTP media
     volumes:
       # Mount the built plugin into Sharkord's plugins directory
-      - ./dist/sharkord-hero-introducer:/app/plugins/sharkord-hero-introducer
+      - ./dist/sharkord-hero-introducer:/home/bun/.config/sharkord/plugins/sharkord-hero-introducer
       # Persistent data (DB, user data, etc.)
-      - sharkord-data:/app/data
+      - sharkord-data:/home/bun/.config/sharkord
       # Mount test music files directly into the plugin's music directory
-      - ./tests/test_music:/app/plugins/sharkord-hero-introducer/music:ro
+      - ./tests/test_music:/home/bun/.config/sharkord/plugins/sharkord-hero-introducer/music
     environment:
       - NODE_ENV=development
       - LOG_LEVEL=debug

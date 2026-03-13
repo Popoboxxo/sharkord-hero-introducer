@@ -55,6 +55,7 @@ const onLoad = async (ctx: PluginContext) => {
   const musicDir = path.join(ctx.path, "music");
   const musicMapFile = path.join(dataDir, "music-map.json");
   const dailyGreetsFile = path.join(dataDir, "daily-greets.json");
+  const userCacheFile = path.join(dataDir, "user-cache.json");
 
   // Ensure data and music directories exist
   await fs.mkdir(dataDir, { recursive: true });
@@ -79,7 +80,22 @@ const onLoad = async (ctx: PluginContext) => {
       type: "boolean",
       defaultValue: true,
     },
+    {
+      key: "debug",
+      name: "Debug mode",
+      description:
+        "When enabled, detailed debug information is logged (user joins, mapping lookups, playback steps).",
+      type: "boolean",
+      defaultValue: false,
+    },
   ] as const);
+
+  /** Logs a message only when the debug setting is enabled. */
+  function debugLog(message: string): void {
+    if (settings.get("debug")) {
+      ctx.log(`[DEBUG] ${message}`);
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // State
@@ -91,18 +107,25 @@ const onLoad = async (ctx: PluginContext) => {
   /** Set of currently active voice channel IDs. */
   const activeChannels = new Set<number>();
 
+  /** Cache of userId → username, persisted to disk, populated from user:joined events. */
+  const userCacheData = await readJsonFile<Record<string, string>>(userCacheFile, {});
+  const userNameCache = new Map<number, string>(
+    Object.entries(userCacheData).map(([id, name]) => [Number(id), name]),
+  );
+  ctx.log(`User cache loaded: ${userNameCache.size} entries`);
+
   // ---------------------------------------------------------------------------
   // Track active voice channels
   // ---------------------------------------------------------------------------
 
   ctx.events.on("voice:runtime_initialized", ({ channelId }) => {
     activeChannels.add(channelId);
-    ctx.debug(`Voice channel ${channelId} is now active`);
+    debugLog(`Voice channel ${channelId} is now active (total: ${activeChannels.size})`);
   });
 
   ctx.events.on("voice:runtime_closed", ({ channelId }) => {
     activeChannels.delete(channelId);
-    ctx.debug(`Voice channel ${channelId} closed`);
+    debugLog(`Voice channel ${channelId} closed (remaining: ${activeChannels.size})`);
   });
 
   // ---------------------------------------------------------------------------
@@ -114,40 +137,56 @@ const onLoad = async (ctx: PluginContext) => {
   // the first currently active voice channel.
 
   ctx.events.on("user:joined", async ({ userId, username }) => {
+    debugLog(`>>> user:joined event — userId=${userId}, username="${username}"`);
+
+    // Cache the userId → username mapping for /hero-set-me (persist to disk)
+    userNameCache.set(userId, username);
+    const cacheObj = Object.fromEntries(userNameCache);
+    await writeJsonFile(userCacheFile, cacheObj);
+    debugLog(`User cache updated: userId=${userId} → "${username}" (total cached: ${userNameCache.size})`);
+    debugLog(`Full user cache: [${[...userNameCache.entries()].map(([id, name]) => `${id}→"${name}"`).join(", ")}]`);
+
     const enabled = settings.get("enabled");
     if (!enabled) {
-      ctx.debug(`Hero Introducer disabled – skipping intro for ${username}`);
+      debugLog(`Plugin disabled – skipping intro for "${username}" (userId=${userId})`);
       return;
     }
 
     // Load the music map (keyed by displayName / username)
     const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
+    const mapKeys = Object.keys(musicMap);
+    debugLog(`MusicMap loaded — ${mapKeys.length} entries: [${mapKeys.join(", ")}]`);
+    debugLog(`Looking up username "${username}" in MusicMap...`);
+
     const audioFileName = musicMap[username];
 
     if (!audioFileName) {
-      ctx.debug(`No intro configured for user ${username} (${userId})`);
+      debugLog(`No intro configured for user "${username}" (userId=${userId}). Available mappings: ${mapKeys.length > 0 ? mapKeys.map((k) => `"${k}"→"${musicMap[k]}"`).join(", ") : "(none)"}`);
       return;
     }
+
+    debugLog(`Match found: "${username}" → "${audioFileName}"`);
 
     // Check once-per-day setting (tracked by userId for uniqueness)
     const oncePerDay = settings.get("oncePerDay");
     if (oncePerDay) {
       const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
       const lastGreet = dailyGreets[String(userId)];
+      debugLog(`oncePerDay check — lastGreet for userId=${userId}: ${lastGreet ?? "(never)"}, today: ${todayISO()}`);
       if (lastGreet === todayISO()) {
-        ctx.debug(
-          `User ${username} already greeted today – skipping intro`,
-        );
+        debugLog(`User "${username}" already greeted today – skipping intro`);
         return;
       }
     }
 
     // Resolve full path from music directory
     const audioPath = path.join(musicDir, audioFileName);
+    debugLog(`Resolved audio path: ${audioPath}`);
 
     // Verify the audio file exists
     try {
       await fs.access(audioPath);
+      debugLog(`Audio file exists: ${audioPath}`);
     } catch {
       ctx.error(
         `Intro file not found for user ${username}: ${audioPath}`,
@@ -155,14 +194,18 @@ const onLoad = async (ctx: PluginContext) => {
       return;
     }
 
+    debugLog(`Active voice channels: [${[...activeChannels].join(", ")}] (count: ${activeChannels.size})`);
+
     // Play the intro in the first active voice channel
-    await playIntroForUser(ctx, userId, username, audioPath, activeProcesses, activeChannels);
+    debugLog(`Starting playback for "${username}" in channel ${[...activeChannels][0] ?? "(none)"}...`);
+    await playIntroForUser(ctx, userId, username, audioPath, activeProcesses, activeChannels, debugLog);
 
     // Record the greeting date
     if (oncePerDay) {
       const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
       dailyGreets[String(userId)] = todayISO();
       await writeJsonFile(dailyGreetsFile, dailyGreets);
+      debugLog(`Recorded greeting for userId=${userId} on ${todayISO()}`);
     }
   });
 
@@ -176,6 +219,7 @@ const onLoad = async (ctx: PluginContext) => {
     description: "Enable the Hero Introducer plugin.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
+      debugLog(`[CMD] hero-enable called by userId=${(_invokerCtx as Record<string, unknown>).userId}`);
       settings.set("enabled", true);
       return "✅ Hero Introducer enabled.";
     },
@@ -187,6 +231,7 @@ const onLoad = async (ctx: PluginContext) => {
     description: "Disable the Hero Introducer plugin.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
+      debugLog(`[CMD] hero-disable called by userId=${(_invokerCtx as Record<string, unknown>).userId}`);
       settings.set("enabled", false);
       return "🔇 Hero Introducer disabled.";
     },
@@ -198,6 +243,7 @@ const onLoad = async (ctx: PluginContext) => {
     description: "Stop the currently playing intro music.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
+      debugLog(`[CMD] hero-stop called by userId=${(_invokerCtx as Record<string, unknown>).userId}, activeProcesses=${activeProcesses.size}`);
       if (activeProcesses.size === 0) {
         return "ℹ️ No intro is currently playing.";
       }
@@ -234,6 +280,7 @@ const onLoad = async (ctx: PluginContext) => {
       _invokerCtx: TInvokerContext,
       args: { displayName: string; audioFileName: string },
     ) {
+      debugLog(`[CMD] hero-set called by userId=${(_invokerCtx as Record<string, unknown>).userId}, args=${JSON.stringify(args)}`);
       const { displayName, audioFileName } = args;
       if (!isSupportedAudioFile(audioFileName)) {
         return "❌ Only MP3 and MPEG files are supported.";
@@ -268,6 +315,7 @@ const onLoad = async (ctx: PluginContext) => {
       _invokerCtx: TInvokerContext,
       args: { displayName: string },
     ) {
+      debugLog(`[CMD] hero-remove called by userId=${(_invokerCtx as Record<string, unknown>).userId}, args=${JSON.stringify(args)}`);
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
       if (!musicMap[args.displayName]) {
         return `ℹ️ No intro configured for ${args.displayName}.`;
@@ -284,6 +332,7 @@ const onLoad = async (ctx: PluginContext) => {
     description: "List all configured DisplayName → audio file mappings.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
+      debugLog(`[CMD] hero-list called by userId=${(_invokerCtx as Record<string, unknown>).userId}`);
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
       const entries = Object.entries(musicMap);
       if (entries.length === 0) {
@@ -300,6 +349,7 @@ const onLoad = async (ctx: PluginContext) => {
     description: "List all available audio files (.mp3, .mpeg) in the music directory.",
     args: [],
     async executes(_invokerCtx: TInvokerContext) {
+      debugLog(`[CMD] hero-files called by userId=${(_invokerCtx as Record<string, unknown>).userId}`);
       let files: string[];
       try {
         const dirEntries = await fs.readdir(musicDir);
@@ -312,6 +362,171 @@ const onLoad = async (ctx: PluginContext) => {
       }
       const lines = files.map((f) => `• ${f}`);
       return `**Available Audio Files**\n${lines.join("\n")}`;
+    },
+  });
+
+  // /hero-set-me <audioFileName> – map the invoking user to an audio file
+  ctx.commands.register<{ audioFileName: string }>({
+    name: "hero-set-me",
+    description:
+      "Map your own user to an intro audio file. Usage: /hero-set-me <audioFileName>",
+    args: [
+      {
+        name: "audioFileName",
+        type: "string",
+        description:
+          "File name of the audio file in the music directory (e.g. my-intro.mp3).",
+        required: true,
+        sensitive: false,
+      },
+    ],
+    async executes(
+      invokerCtx: TInvokerContext,
+      args: { audioFileName: string },
+    ) {
+      const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      debugLog(`[CMD] hero-set-me called by userId=${invokerUserId}, args=${JSON.stringify(args)}`);
+
+      const { audioFileName } = args;
+      if (!isSupportedAudioFile(audioFileName)) {
+        return "❌ Only MP3 and MPEG files are supported.";
+      }
+      const fullPath = path.join(musicDir, audioFileName);
+      try {
+        await fs.access(fullPath);
+      } catch {
+        return `❌ File not found in music directory: ${audioFileName}`;
+      }
+
+      // Look up username from cache (populated by user:joined events)
+      const invokerName = invokerUserId !== undefined ? userNameCache.get(invokerUserId) : undefined;
+      if (!invokerName) {
+        debugLog(`hero-set-me: userId=${invokerUserId}, cached usernames=[${[...userNameCache.entries()].map(([id, name]) => `${id}→${name}`).join(", ")}]`);
+        return "❌ Could not determine your username. Please rejoin the server first so your name is cached, then try again.";
+      }
+
+      const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
+      musicMap[invokerName] = audioFileName;
+      await writeJsonFile(musicMapFile, musicMap);
+      debugLog(`hero-set-me: mapped "${invokerName}" → "${audioFileName}"`);
+      return `✅ Intro set for yourself (${invokerName}): ${audioFileName}`;
+    },
+  });
+
+  // /hero-play-me – play your own intro in the current voice channel
+  ctx.commands.register({
+    name: "hero-play-me",
+    description: "Play your own intro music in the voice channel you are currently in.",
+    args: [],
+    async executes(invokerCtx: TInvokerContext) {
+      const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      debugLog(`[CMD] hero-play-me called by userId=${invokerUserId}, voiceChannelId=${voiceChannelId}`);
+
+      if (invokerUserId === undefined) {
+        return "❌ Could not determine your user ID.";
+      }
+
+      // Resolve username from cache
+      const invokerName = userNameCache.get(invokerUserId);
+      debugLog(`hero-play-me: userId=${invokerUserId} → cached username="${invokerName ?? "(not cached)"}"`);
+      if (!invokerName) {
+        return "❌ Your username is not cached yet. Please rejoin the server and try again.";
+      }
+
+      // Look up audio mapping
+      const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
+      const audioFileName = musicMap[invokerName];
+      debugLog(`hero-play-me: MusicMap lookup "${invokerName}" → "${audioFileName ?? "(no mapping)"}"`);
+      if (!audioFileName) {
+        return `ℹ️ No intro configured for you (${invokerName}). Use /hero-set-me to set one.`;
+      }
+
+      // Verify audio file
+      const audioPath = path.join(musicDir, audioFileName);
+      try {
+        await fs.access(audioPath);
+      } catch {
+        return `❌ Intro file not found: ${audioFileName}`;
+      }
+
+      // Determine target channel
+      if (!voiceChannelId) {
+        return "❌ You are not in a voice channel. Join one first, then try again.";
+      }
+
+      debugLog(`hero-play-me: playing "${audioFileName}" for "${invokerName}" in channel ${voiceChannelId}`);
+      await playIntroForUser(ctx, invokerUserId, invokerName, audioPath, activeProcesses, activeChannels, debugLog, voiceChannelId);
+      return `🎵 Playing your intro: ${audioFileName}`;
+    },
+  });
+
+  // /hero-play <displayName> – play another user's intro in your voice channel
+  ctx.commands.register<{ displayName: string }>({
+    name: "hero-play",
+    description: "Play the intro music of another user. Usage: /hero-play <displayName>",
+    args: [
+      {
+        name: "displayName",
+        type: "string",
+        description: "The display name of the user whose intro to play.",
+        required: true,
+        sensitive: false,
+      },
+    ],
+    async executes(
+      invokerCtx: TInvokerContext,
+      args: { displayName: string },
+    ) {
+      const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      const { displayName } = args;
+      debugLog(`[CMD] hero-play called by userId=${invokerUserId}, args=${JSON.stringify(args)}, voiceChannelId=${voiceChannelId}`);
+
+      // Determine target channel
+      if (!voiceChannelId) {
+        return "❌ You are not in a voice channel. Join one first, then try again.";
+      }
+
+      // Look up audio mapping
+      const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
+      const audioFileName = musicMap[displayName];
+      debugLog(`hero-play: MusicMap lookup "${displayName}" → "${audioFileName ?? "(no mapping)"}"`);
+      if (!audioFileName) {
+        return `ℹ️ No intro configured for ${displayName}.`;
+      }
+
+      // Verify audio file
+      const audioPath = path.join(musicDir, audioFileName);
+      try {
+        await fs.access(audioPath);
+      } catch {
+        return `❌ Intro file not found: ${audioFileName}`;
+      }
+
+      debugLog(`hero-play: playing "${audioFileName}" for "${displayName}" in channel ${voiceChannelId}`);
+      await playIntroForUser(ctx, invokerUserId ?? 0, displayName, audioPath, activeProcesses, activeChannels, debugLog, voiceChannelId);
+      return `🎵 Playing intro for ${displayName}: ${audioFileName}`;
+    },
+  });
+
+  // /hero-dump-context – logs the full invokerCtx for debugging SDK types
+  ctx.commands.register<{ testArg: string }>({
+    name: "hero-dump-context",
+    description: "(Debug) Dump the invoker context and args to the log.",
+    args: [
+      {
+        name: "testArg",
+        type: "string",
+        description: "A test argument to see how args are passed.",
+        required: false,
+        sensitive: false,
+      },
+    ],
+    async executes(...params: unknown[]) {
+      const dump = params.map((p, i) => `param[${i}]: ${JSON.stringify(p, null, 2)}`).join("\n\n");
+      ctx.log(`[DEBUG] Command params (${params.length} total):\n${dump}`);
+      return `📋 Dumped ${params.length} params to server log.`;
     },
   });
 
@@ -330,23 +545,31 @@ async function playIntroForUser(
   mp3Path: string,
   activeProcesses: Map<number, ReturnType<typeof spawn>>,
   activeChannels: Set<number>,
+  debugLog: (msg: string) => void = () => {},
+  targetChannelId?: number,
 ): Promise<void> {
-  // Use the first currently active voice channel
-  const channelId = [...activeChannels][0];
+  debugLog(`playIntroForUser: state dump — activeProcesses=${activeProcesses.size}, activeChannels=[${[...activeChannels].join(", ")}], targetChannelId=${targetChannelId ?? "(auto)"}`);
+
+  // Use the specified channel or fall back to the first active one
+  const channelId = targetChannelId ?? [...activeChannels][0];
   if (channelId === undefined) {
     ctx.error("No active voice channel found – cannot play intro");
     return;
   }
 
+  debugLog(`playIntroForUser: using channelId=${channelId}, userId=${userId}, username="${username}", mp3Path="${mp3Path}"`);
+
   let router;
   try {
     router = ctx.actions.voice.getRouter(channelId);
+    debugLog(`Got router for channel ${channelId}`);
   } catch (err) {
     ctx.error(`Failed to get voice router for channel ${channelId}: ${String(err)}`);
     return;
   }
 
   const listenInfo = ctx.actions.voice.getListenInfo();
+  debugLog(`listenInfo: ip=${listenInfo.ip}, announcedAddress=${listenInfo.announcedAddress}`);
 
   try {
     // Create a plain RTP transport to inject audio
@@ -362,7 +585,10 @@ async function playIntroForUser(
     });
 
     const rtpPort = plainTransport.tuple.localPort;
-    const rtpIp = plainTransport.tuple.localIp;
+    // ffmpeg runs in the same container as mediasoup, so always send to 127.0.0.1
+    // (plainTransport.tuple.localIp returns the announcedAddress which is the public IP)
+    const rtpIp = "127.0.0.1";
+    debugLog(`PlainTransport created: publicIp=${plainTransport.tuple.localIp}, rtpTarget=${rtpIp}:${rtpPort}`);
 
     // Produce audio on this transport (Opus is required by WebRTC/mediasoup)
     const producer = await plainTransport.produce({
@@ -391,7 +617,10 @@ async function playIntroForUser(
       producers: { audio: producer },
     });
 
+    debugLog(`Producer created, SSRC=${11111111 + userId}, stream key=hero-intro-${userId}`);
+
     // Spawn ffmpeg to decode the MP3 and send it as RTP/Opus to mediasoup
+    debugLog(`Spawning ffmpeg: -re -i "${mp3Path}" -vn -acodec libopus -f rtp rtp://${rtpIp}:${rtpPort}`);
     const ffmpeg = spawn("ffmpeg", [
       "-re",
       "-i", mp3Path,

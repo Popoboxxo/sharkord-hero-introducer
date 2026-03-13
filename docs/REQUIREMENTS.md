@@ -1,7 +1,7 @@
 # Requirements – sharkord-hero-introducer
 
 > **Version:** 0.1.0
-> **Stand:** 11. März 2026
+> **Stand:** 13. März 2026
 > **Alleinige Quelle der Wahrheit** für alle funktionalen und nichtfunktionalen Anforderungen.
 
 ---
@@ -54,6 +54,11 @@
 | REQ-CMD-005 | `/hero-remove <displayName>` entfernt das MP3-Mapping für den angegebenen DisplayName. Existiert kein Mapping, wird eine Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L247–L272 |
 | REQ-CMD-006 | `/hero-list` gibt eine formatierte Liste aller DisplayName→Audio-Zuordnungen im Format `DisplayName: audioFileName` zurück. Sind keine Mappings vorhanden, wird eine entsprechende Info-Meldung angezeigt. | Implemented | Must | `src/server.ts` L274–L288 |
 | REQ-CMD-007 | `/hero-files` listet alle verfügbaren Audio-Dateien (`.mp3` und `.mpeg`) auf, die im Verzeichnis `<plugin-dir>/music/` liegen. So kann der Admin sehen, welche Dateien zum Zuordnen verfügbar sind. | Implemented | Should | `src/server.ts` L290–L310 |
+| REQ-CMD-008 | `/hero-debug` toggelt das Setting `debug` zwischen `true` und `false` und gibt eine Status-Meldung zurück, ob Debug-Modus aktiviert oder deaktiviert wurde. | Implemented | Should | `src/server.ts` L392–L405 |
+| REQ-CMD-009 | `/hero-set-me <audioFileName>` mappt den ausführenden User (ermittelt aus `invokerCtx.username`) auf die angegebene Audio-Datei. Vor dem Speichern wird geprüft, dass der Dateiname auf `.mp3` oder `.mpeg` endet und die Datei im music-Ordner existiert. Ist `invokerCtx.username` nicht verfügbar, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L346–L390 |
+| REQ-CMD-010 | `/hero-dump-context` gibt den vollständigen `invokerCtx` als JSON-Dump in die Server-Logs aus und zeigt ihn dem Aufrufer als formatiertes JSON an. Dient dem Reverse-Engineering der SDK-Typen. | Implemented | Could | `src/server.ts` L406–L418 |
+| REQ-CMD-011 | `/hero-play-me` spielt das eigene Intro des ausführenden Users ab. Der Command ermittelt über `invokerCtx.userId` den `username` aus dem User-Cache (userId→username) und sucht das zugehörige Audio-Mapping in der MusicMap. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping vorhanden, wird eine Info-Meldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Open | Should | — |
+| REQ-CMD-012 | `/hero-play <displayName>` spielt das Intro einer anderen Person ab. Der Command akzeptiert ein Argument `displayName: string`, sucht diesen in der MusicMap und spielt die zugehörige Audio-Datei ab. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping für den displayName vorhanden, wird eine Info-Meldung zurückgegeben. Existiert die zugeordnete Audio-Datei nicht, wird eine Fehlermeldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Open | Should | — |
 
 ### Abnahmekriterien REQ-CMD
 
@@ -71,6 +76,20 @@
 | REQ-CMD-006-B | Keine Mappings → Info-Meldung "No intro mappings configured yet." |
 | REQ-CMD-007-A | Mindestens eine `.mp3` oder `.mpeg` Datei im music-Ordner → formatierte Liste der Dateinamen. |
 | REQ-CMD-007-B | Keine Audio-Dateien (`.mp3`/`.mpeg`) im music-Ordner → Info-Meldung. |
+| REQ-CMD-008-A | Ausführung bei `debug=false` → Setting wird `true`, Rückmeldung enthält "enabled". |
+| REQ-CMD-008-B | Ausführung bei `debug=true` → Setting wird `false`, Rückmeldung enthält "disabled". |
+| REQ-CMD-009-A | Gültige `.mp3`/`.mpeg` Datei im music-Ordner + `invokerCtx.username` verfügbar → Mapping `username → audioFileName` in `music-map.json` gespeichert, Bestätigung. |
+| REQ-CMD-009-B | Dateiendung ist weder `.mp3` noch `.mpeg` → Fehlermeldung. |
+| REQ-CMD-009-C | Audio-Datei existiert nicht im music-Ordner → Fehlermeldung. |
+| REQ-CMD-009-D | `invokerCtx.username` ist nicht verfügbar → Fehlermeldung. |
+| REQ-CMD-010 | Ausführung → Server-Log enthält JSON-Dump des `invokerCtx`, Rückmeldung enthält formatiertes JSON. |
+| REQ-CMD-011-A | Ausführung durch User mit konfiguriertem Mapping + aktiver Voice-Channel → eigenes Intro wird im Voice-Channel des Aufrufers abgespielt. |
+| REQ-CMD-011-B | Ausführung durch User ohne Mapping → Info-Meldung, keine Wiedergabe. |
+| REQ-CMD-011-C | Ausführung ohne `currentVoiceChannelId` im Context → Fehlermeldung. |
+| REQ-CMD-012-A | Ausführung mit existierendem displayName-Mapping + aktiver Voice-Channel → Intro der angegebenen Person wird im Voice-Channel des Aufrufers abgespielt. |
+| REQ-CMD-012-B | Ausführung mit displayName ohne Mapping → Info-Meldung, keine Wiedergabe. |
+| REQ-CMD-012-C | Ausführung mit displayName-Mapping, aber Audio-Datei existiert nicht → Fehlermeldung. |
+| REQ-CMD-012-D | Ausführung ohne `currentVoiceChannelId` im Context → Fehlermeldung. |
 
 ---
 
@@ -81,6 +100,7 @@
 | REQ-CFG-001 | Das Plugin registriert eine Einstellung `enabled` (Typ: `boolean`, Default: `true`). Wenn `false`, wird bei keinem User-Join ein Intro abgespielt. | Implemented | Must | `src/server.ts` L56–L63 |
 | REQ-CFG-002 | Das Plugin registriert eine Einstellung `oncePerDay` (Typ: `boolean`, Default: `true`). Wenn `true`, wird jeder User maximal einmal pro Kalendertag begrüßt. | Implemented | Must | `src/server.ts` L64–L72 |
 | REQ-CFG-003 | Das Plugin aktiviert die Settings-UI im Sharkord-Frontend via `ctx.ui.enable()`, sodass Einstellungen im Frontend bearbeitet werden können. | Implemented | Should | `src/server.ts` L283 |
+| REQ-CFG-004 | Das Plugin registriert eine Einstellung `debug` (Typ: `boolean`, Default: `false`). Wenn `true`, wird detailliertes Debug-Logging über die interne `debugLog`-Funktion aktiviert. | Implemented | Should | `src/server.ts` L83–L90 |
 
 ### Abnahmekriterien REQ-CFG
 
@@ -91,6 +111,8 @@
 | REQ-CFG-002-B | Setting `oncePerDay=true`, User wurde heute noch nicht begrüßt → Intro wird abgespielt. |
 | REQ-CFG-002-C | Setting `oncePerDay=false` → User hört Intro bei jedem Join, unabhängig wie oft. |
 | REQ-CFG-003 | Im Sharkord-Frontend unter Plugins → Hero Introducer → Settings sind die Einstellungen sichtbar und editierbar. |
+| REQ-CFG-004-A | Setting `debug=true` → Debug-Logging ist aktiv, `[DEBUG]`-Einträge erscheinen im Log. |
+| REQ-CFG-004-B | Setting `debug=false` → keine `[DEBUG]`-Einträge im Log. |
 
 ---
 
@@ -135,6 +157,32 @@
 | REQ-LIFE-002 | Nach Aufruf von `onUnload(ctx)` wird "Hero Introducer unloaded" geloggt. |
 | REQ-LIFE-003 | `bun build.ts` → `dist/sharkord-hero-introducer/` enthält `server.js`, `client.js` und `package.json`. `server.js` enthält `export`-Marker. |
 | REQ-LIFE-004 | `client.js` enthält keine React-Komponenten oder UI-Logik. |
+
+---
+
+## 7 · Debug / Diagnose (REQ-DBG)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-DBG-001 | Die interne Hilfsfunktion `debugLog(message)` loggt ausschließlich dann, wenn das Setting `debug` auf `true` steht. Jede Ausgabe wird mit dem Prefix `[DEBUG]` über `ctx.log()` geschrieben. | Implemented | Should | `src/server.ts` L92–L97 |
+| REQ-DBG-002 | Im `user:joined`-Handler werden folgende Informationen via Debug-Log ausgegeben: userId, username, Anzahl und Keys der MusicMap, Lookup-Ergebnis (Match oder verfügbare Mappings zum Vergleich), oncePerDay-Status mit letztem Greet-Datum, aufgelöster Audio-Pfad mit Datei-Existenz, aktive Voice-Channels vor der Wiedergabe. | Implemented | Should | `src/server.ts` L132–L185 |
+| REQ-DBG-003 | In der Funktion `playIntroForUser` werden Router-Erstellung, PlainTransport-Konfiguration (rtpIp, rtpPort) und ffmpeg-Spawn-Kommando via Debug-Log ausgegeben. | Implemented | Should | `src/server.ts` L447, L471, L503 |
+| REQ-DBG-004 | Bei Voice-Channel Events (`voice:runtime_initialized`, `voice:runtime_closed`) wird die aktuelle Anzahl aktiver Channels via Debug-Log ausgegeben. | Implemented | Should | `src/server.ts` L115, L120 |
+| REQ-DBG-005 | Bei jedem Command-Aufruf werden Command-Name, userId und übergebene Argumente geloggt. | Open | Should | — |
+| REQ-DBG-006 | Beim User-Cache-Update (Persistierung der userId→username-Zuordnung) wird ein Log-Eintrag mit der aktualisierten Zuordnung erzeugt. | Open | Should | — |
+| REQ-DBG-007 | In der Funktion `playIntroForUser` wird ein vollständiger State-Dump geloggt, der mindestens die Anzahl aktiver Prozesse (`activeProcesses.size`) und die Liste aktiver Voice-Channels (`activeChannels`) enthält. | Open | Should | — |
+
+### Abnahmekriterien REQ-DBG
+
+| REQ-ID | Abnahmekriterium |
+|--------|------------------|
+| REQ-DBG-001 | `debug=true` → Aufruf von `debugLog("test")` erzeugt Log-Eintrag `[DEBUG] test`. `debug=false` → kein Log-Eintrag. |
+| REQ-DBG-002 | User joint bei `debug=true` → Log enthält Einträge zu userId, username, MusicMap-Keys, Lookup-Ergebnis, oncePerDay-Status, Audio-Pfad und Voice-Channel-Anzahl. |
+| REQ-DBG-003 | Wiedergabe startet bei `debug=true` → Log enthält Router-Info, Transport-IP/Port und ffmpeg-Kommando. |
+| REQ-DBG-004 | Voice-Channel wird geöffnet/geschlossen bei `debug=true` → Log enthält Channel-ID und aktuelle Anzahl. |
+| REQ-DBG-005 | Command wird ausgeführt → Log enthält Command-Name, userId des Aufrufers und alle übergebenen Argumente. |
+| REQ-DBG-006 | User-Cache wird aktualisiert → Log enthält die persistierte userId→username-Zuordnung. |
+| REQ-DBG-007 | `playIntroForUser` wird aufgerufen → Log enthält State-Dump mit `activeProcesses`-Anzahl und `activeChannels`-Liste. |
 
 ---
 
@@ -193,6 +241,19 @@
 | REQ-NF-002 | `package.json` L6 | — (offen) |
 | REQ-NF-003 | `build.ts` L51 | `tests/unit/build.test.ts` |
 | REQ-NF-004 | `build.ts` L7–L44 | — (offen) |
+| REQ-CFG-004 | `src/server.ts` L83–L90 | — (offen) |
+| REQ-CMD-008 | `src/server.ts` L392–L405 | — (offen) |
+| REQ-CMD-009 | `src/server.ts` L346–L390 | — (offen) |
+| REQ-CMD-010 | `src/server.ts` L406–L418 | — (offen) |
+| REQ-DBG-001 | `src/server.ts` L92–L97 | — (offen) |
+| REQ-DBG-002 | `src/server.ts` L132–L185 | — (offen) |
+| REQ-DBG-003 | `src/server.ts` L447, L471, L503 | — (offen) |
+| REQ-DBG-004 | `src/server.ts` L115, L120 | — (offen) |
+| REQ-CMD-011 | — | — (offen) |
+| REQ-CMD-012 | — | — (offen) |
+| REQ-DBG-005 | — | — (offen) |
+| REQ-DBG-006 | — | — (offen) |
+| REQ-DBG-007 | — | — (offen) |
 
 ---
 
@@ -201,9 +262,13 @@
 ### Tests fehlen für:
 - **REQ-CORE-002 bis REQ-CORE-007** — Kernszenarios (No-Mapping, Datei-Check, Streaming, Channel-Tracking, Cleanup) sind nicht unit-getestet.
 - **REQ-CMD-001 bis REQ-CMD-003** — Enable/Disable/Stop-Commands nicht getestet.
-- **REQ-CFG-002, REQ-CFG-003** — Settings `oncePerDay` und UI-Aktivierung nicht getestet.
+- **REQ-CFG-002, REQ-CFG-003, REQ-CFG-004** — Settings `oncePerDay`, UI-Aktivierung und `debug` nicht getestet.
 - **REQ-DATA-001, REQ-DATA-002, REQ-DATA-004** — JSON-Persistenz (Pfade, Daily-Greets, Fallback) nicht getestet.
 - **REQ-DATA-006** — Docker-Testdateien-Mount nicht getestet.
+- **REQ-CMD-008, REQ-CMD-009, REQ-CMD-010** — Debug-Toggle, Set-Me und Dump-Context Commands nicht getestet.
+- **REQ-CMD-011, REQ-CMD-012** — hero-play-me und hero-play Commands nicht implementiert und nicht getestet.
+- **REQ-DBG-005, REQ-DBG-006, REQ-DBG-007** — Command-Logging, User-Cache-Logging und playIntroForUser State-Dump nicht implementiert und nicht getestet.
+- **REQ-DBG-001 bis REQ-DBG-004** — Debug-Logging-Funktionalität nicht getestet.
 - **REQ-LIFE-004** — Leerer Client-Entry-Point nicht getestet.
 - **REQ-NF-001 bis REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
 
@@ -229,3 +294,5 @@
 | 2026-03-11 | Initiale Erfassung aller Requirements aus Implementierungsstand v0.1.0 | Requirements Engineer |
 | 2026-03-11 | DisplayName-Refactoring: REQ-CORE-001, REQ-CMD-004/005/006, REQ-DATA-001 auf DisplayName→Audio-Logik umgestellt. REQ-CMD-007 (`/hero-files`) und REQ-DATA-005 (music-Ordner) hinzugefügt. | Requirements Engineer |
 | 2026-03-11 | MPEG-Support: REQ-CORE-001/004, REQ-CMD-004/007, REQ-DATA-001 um `.mpeg` Unterstützung erweitert. REQ-DATA-006 (Docker-Test-Musik-Mount) hinzugefügt. | Requirements Engineer |
+| 2026-03-13 | Debug-Features: REQ-CFG-004 (Debug-Setting), REQ-CMD-008/009/010 (hero-debug, hero-set-me, hero-dump-context), REQ-DBG-001–004 (Debug-Logging) hinzugefügt. | Requirements Engineer |
+| 2026-03-13 | Play-Commands: REQ-CMD-011 (`/hero-play-me`), REQ-CMD-012 (`/hero-play <displayName>`) hinzugefügt. Erweitertes Logging: REQ-DBG-005 (Command-Logging), REQ-DBG-006 (User-Cache-Logging), REQ-DBG-007 (playIntroForUser State-Dump) hinzugefügt. | Requirements Engineer |

@@ -1,6 +1,6 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 11. März 2026
+> **Stand:** 13. März 2026
 > **Version:** 0.1.0
 
 ---
@@ -9,7 +9,7 @@
 
 | Datei | Zeilen | Rolle |
 |-------|--------|-------|
-| `src/server.ts` | ~436 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback |
+| `src/server.ts` | ~600 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback |
 | `src/client.ts` | 2 | Leerer Client-Entry-Point (kein UI) |
 | `build.ts` | ~63 | Bun Build-Script (Server + Client + package.json kopieren) |
 
@@ -54,6 +54,13 @@
 |-----|-----|---------|-----|
 | `enabled` | `boolean` | `true` | REQ-CFG-001 |
 | `oncePerDay` | `boolean` | `true` | REQ-CFG-002 |
+| `debug` | `boolean` | `false` | REQ-CFG-004 |
+
+#### Interne Hilfsfunktionen (in onLoad-Closure)
+
+| Funktion | Signatur | Beschreibung | REQ |
+|----------|----------|-------------|-----|
+| `debugLog` | `(message: string) => void` | Loggt nur wenn `debug=true`, mit `[DEBUG]` Prefix via `ctx.log()` | REQ-DBG-001 |
 
 #### State (lokal in onLoad-Closure)
 
@@ -61,14 +68,17 @@
 |----------|-----|-------|
 | `activeProcesses` | `Map<number, ChildProcess>` | Laufende ffmpeg-Prozesse, keyed by userId |
 | `activeChannels` | `Set<number>` | Aktive Voice-Channel-IDs |
+| `userNameCache` | `Map<number, string>` | userId → username Cache, persistiert zu `data/user-cache.json`. Beim Start aus Datei geladen, bei jedem `user:joined` Event aktualisiert und auf Disk geschrieben. |
+
+**Startup-Logging:** Beim Laden wird die User-Cache-Größe geloggt (`User cache loaded: N entries`).
 
 #### Events
 
 | Event | Handler-Logik | REQ |
 |-------|--------------|-----|
-| `voice:runtime_initialized` | `activeChannels.add(channelId)` | REQ-CORE-005 |
-| `voice:runtime_closed` | `activeChannels.delete(channelId)` | REQ-CORE-005 |
-| `user:joined` | Intro-Logik: enabled-Check → MusicMap-Lookup → oncePerDay-Check → Datei-Existenz → `playIntroForUser()` → DailyGreets speichern | REQ-CORE-001 bis REQ-CORE-003, REQ-CFG-001, REQ-CFG-002 |
+| `voice:runtime_initialized` | `activeChannels.add(channelId)`, `debugLog()` | REQ-CORE-005, REQ-DBG-002 |
+| `voice:runtime_closed` | `activeChannels.delete(channelId)`, `debugLog()` | REQ-CORE-005, REQ-DBG-002 |
+| `user:joined` | Intro-Logik: `userNameCache` aktualisieren + persistieren → enabled-Check → MusicMap-Lookup → oncePerDay-Check → Datei-Existenz → `playIntroForUser()` → DailyGreets speichern. `debugLog()` an vielen Stellen. Loggt Cache-Update mit Gesamtzahl und vollständigem Cache-Inhalt (REQ-DBG-006). | REQ-CORE-001 bis REQ-CORE-003, REQ-CFG-001, REQ-CFG-002, REQ-DBG-003, REQ-DBG-006 |
 
 #### Commands
 
@@ -81,6 +91,13 @@
 | `/hero-remove` | `displayName: string` | Löscht Mapping aus MusicMap | REQ-CMD-005 |
 | `/hero-list` | — | Listet alle DisplayName→audioFileName-Zuordnungen | REQ-CMD-006 |
 | `/hero-files` | — | Listet alle `.mp3`- und `.mpeg`-Dateien im music-Ordner | REQ-CMD-007 |
+| `/hero-set-me` | `audioFileName: string` | Mappt den ausführenden User auf Audio-Datei. Nutzt `invokerCtx.username`. | REQ-CMD-009 |
+| `/hero-debug` | — | Toggelt Debug-Setting (`debug` on/off) | REQ-CMD-008 |
+| `/hero-play-me` | — | Spielt das eigene Intro des aufrufenden Users ab. Nutzt `invokerCtx.userId` → `userNameCache` → MusicMap-Lookup. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-011 |
+| `/hero-play` | `displayName: string` | Spielt das Intro einer anderen Person ab. MusicMap-Lookup über `displayName`. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-012 |
+| `/hero-dump-context` | `testArg?: string` | Dumpt alle Command-Parameter als JSON ins Server-Log | REQ-CMD-010 |
+
+**Logging:** Jede Command-`executes`-Funktion loggt beim Aufruf `[CMD] <name> called by userId=..., args=...` (REQ-DBG-005).
 
 Abschließend: `ctx.ui.enable()` (REQ-CFG-003).
 
@@ -91,25 +108,29 @@ async function playIntroForUser(
   ctx: PluginContext,
   userId: number,
   username: string,
-  audioPath: string,
+  mp3Path: string,
   activeProcesses: Map<number, ReturnType<typeof spawn>>,
   activeChannels: Set<number>,
+  debugLog: (msg: string) => void = () => {},
+  targetChannelId?: number,
 ): Promise<void>
 ```
 
-**REQ:** REQ-CORE-004, REQ-CORE-006, REQ-CORE-007
+**REQ:** REQ-CORE-004, REQ-CORE-006, REQ-CORE-007, REQ-DBG-004, REQ-DBG-007, REQ-CMD-011, REQ-CMD-012
 
 **Ablauf:**
 
-1. Erster aktiver Channel aus `activeChannels` → kein Channel = Error-Log + Return (REQ-CORE-006)
-2. `ctx.actions.voice.getRouter(channelId)` → mediasoup Router holen
-3. `router.createPlainTransport()` mit UDP, `rtcpMux: true`, `comedia: true`, Port-Range 40100–40200
-4. `plainTransport.produce()` → Opus-Producer (48kHz, stereo, SSRC = 11111111 + userId)
-5. `ctx.actions.voice.createStream()` → Stream im Channel exponieren (Titel: `🎵 Intro: {username}`)
-6. `spawn("ffmpeg", [...])` → MP3 decodieren → Opus-RTP an `rtp://{ip}:{port}?pkt_size=1316`
-7. ffmpeg in `activeProcesses` registrieren
-8. **Cleanup bei `close`-Event:** `activeProcesses.delete`, `stream.remove()`, `producer.close()`, `plainTransport.close()` (REQ-CORE-007)
-9. **Cleanup bei `error`-Event:** Identisch, mit try/catch um close-Aufrufe
+0. State-Dump loggen: activeProcesses count, activeChannels list, targetChannelId (REQ-DBG-007)
+1. `targetChannelId` verwenden falls gesetzt, sonst erster aktiver Channel aus `activeChannels` → kein Channel = Error-Log + Return (REQ-CORE-006)
+2. `debugLog()` bei jedem Schritt (channelId, Router, Transport, Producer, ffmpeg-Spawn) (REQ-DBG-004)
+3. `ctx.actions.voice.getRouter(channelId)` → mediasoup Router holen
+4. `router.createPlainTransport()` mit UDP, `rtcpMux: true`, `comedia: true`, Port-Range 40100–40200
+5. `plainTransport.produce()` → Opus-Producer (48kHz, stereo, SSRC = 11111111 + userId)
+6. `ctx.actions.voice.createStream()` → Stream im Channel exponieren (Titel: `🎵 Intro: {username}`)
+7. `spawn("ffmpeg", [...])` → MP3 decodieren → Opus-RTP an `rtp://{ip}:{port}?pkt_size=1316`
+8. ffmpeg in `activeProcesses` registrieren
+9. **Cleanup bei `close`-Event:** `activeProcesses.delete`, `stream.remove()`, `producer.close()`, `plainTransport.close()` (REQ-CORE-007)
+10. **Cleanup bei `error`-Event:** Identisch, mit try/catch um close-Aufrufe
 
 ### onUnload
 
@@ -166,17 +187,30 @@ Output-Verzeichnis: `dist/sharkord-hero-introducer/`
 ```
 user:joined(userId, username)
   │
-  ├─ enabled == false? → Debug-Log, return
+  ├─ debugLog: userId, username
   │
-  ├─ MusicMap[username] nicht vorhanden? → Debug-Log, return
+  ├─ userNameCache.set(userId, username) → writeJsonFile(user-cache.json)
+  │   └─ debugLog: Cache-Update mit Gesamtzahl + vollständigem Cache-Inhalt
   │
-  ├─ oncePerDay && bereits heute begrüßt? → Debug-Log, return
+  ├─ enabled == false? → debugLog, return
+  │
+  ├─ MusicMap laden → debugLog (Anzahl Einträge, Keys)
+  │
+  ├─ MusicMap[username] nicht vorhanden? → debugLog (verfügbare Mappings), return
+  │
+  ├─ oncePerDay && bereits heute begrüßt? → debugLog, return
   │
   ├─ Audio-Datei existiert nicht? → Error-Log, return
   │
-  └─ playIntroForUser()
+  ├─ debugLog: aktive Channels
+  │
+  └─ playIntroForUser(ctx, ..., debugLog)  [ohne targetChannelId]
+       │
+       ├─ State-Dump loggen (activeProcesses, activeChannels, targetChannelId)
        │
        ├─ Kein aktiver Channel? → Error-Log, return
+       │
+       ├─ debugLog bei jedem Schritt (Router, Transport, Producer, ffmpeg)
        │
        ├─ Router holen → PlainTransport erstellen → Producer erstellen
        │
@@ -200,7 +234,46 @@ user:joined(userId, username)
   └─ readJsonFile(musicMap) → Map[displayName] = audioFileName → writeJsonFile
 ```
 
-### Flow 3: Build
+### Flow 3: /hero-play-me → Eigenes Intro abspielen
+
+```
+/hero-play-me
+  │
+  ├─ invokerCtx.userId auslesen
+  │
+  ├─ userId undefined? → Fehlermeldung
+  │
+  ├─ userNameCache.get(userId) → username auflösen
+  │   └─ Nicht gecached? → Fehlermeldung
+  │
+  ├─ MusicMap[username] → audioFileName
+  │   └─ Kein Mapping? → Fehlermeldung
+  │
+  ├─ Audio-Datei existiert nicht? → Fehlermeldung
+  │
+  ├─ invokerCtx.currentVoiceChannelId → targetChannelId
+  │   └─ Nicht im Channel? → Fehlermeldung
+  │
+  └─ playIntroForUser(ctx, ..., debugLog, targetChannelId)
+```
+
+### Flow 4: /hero-play → Fremdes Intro abspielen
+
+```
+/hero-play <displayName>
+  │
+  ├─ invokerCtx.currentVoiceChannelId → targetChannelId
+  │   └─ Nicht im Channel? → Fehlermeldung
+  │
+  ├─ MusicMap[displayName] → audioFileName
+  │   └─ Kein Mapping? → Fehlermeldung
+  │
+  ├─ Audio-Datei existiert nicht? → Fehlermeldung
+  │
+  └─ playIntroForUser(ctx, ..., debugLog, targetChannelId)
+```
+
+### Flow 5: Build
 
 ```
 bun build.ts
@@ -220,6 +293,7 @@ bun build.ts
 |-------|------|--------|--------|
 | MusicMap | `<plugin-dir>/data/music-map.json` | JSON | `{ displayName: audioFileName }` |
 | DailyGreets | `<plugin-dir>/data/daily-greets.json` | JSON | `{ userId: "YYYY-MM-DD" }` |
+| UserCache | `<plugin-dir>/data/user-cache.json` | JSON | `{ userId: username }` — Persistenter userId→username Cache |
 | Audio-Dateien | `<plugin-dir>/music/*.mp3, *.mpeg` | Binär | Intro-Musik-Dateien |
 
 ---
