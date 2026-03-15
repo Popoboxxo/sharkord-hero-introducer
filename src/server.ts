@@ -1,5 +1,4 @@
 import type { PluginContext, TInvokerContext } from "@sharkord/plugin-sdk";
-import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 
@@ -177,7 +176,7 @@ const onLoad = async (ctx: PluginContext) => {
 
   /** Currently running playback sessions keyed by `channelId-userId`. */
   interface PlaybackSession {
-    ffmpeg: ReturnType<typeof spawn>;
+    ffmpeg: { kill(signal?: number): void };
     cleanup: () => void;
   }
   const activeSessions = new Map<string, PlaybackSession>();
@@ -212,12 +211,12 @@ const onLoad = async (ctx: PluginContext) => {
     const existing = activeSessions.get(procKey);
     if (existing) {
       debugLog(`Stopping existing playback for ${procKey}`);
-      existing.ffmpeg.kill("SIGTERM");
+      existing.ffmpeg.kill();
       existing.cleanup();
       activeSessions.delete(procKey);
     }
 
-    // 1. Create transport + producer
+    // 1. Create transport + producer (matching sharkord-music-bot exactly)
     const router = ctx.actions.voice.getRouter(channelId);
     const listenInfo = await ctx.actions.voice.getListenInfo();
     debugLog(`listenInfo: ip=${listenInfo.ip}, announcedAddress=${listenInfo.announcedAddress}`);
@@ -238,77 +237,120 @@ const onLoad = async (ctx: PluginContext) => {
           payloadType: 111,
           clockRate: 48000,
           channels: 2,
-          parameters: { minptime: 10, useinbandfec: 1 },
+          parameters: {},
           rtcpFeedback: [],
         }],
         encodings: [{ ssrc }],
       },
     });
 
-    if (producer.paused) {
-      await producer.resume();
-    }
-
     const rtpPort = transport.tuple.localPort;
     debugLog(`Transport created — port=${rtpPort}, SSRC=${ssrc}, producerId=${producer.id}`);
 
-    // 2. Spawn ffmpeg FIRST — matching working reference implementation order.
-    //    ffmpeg must be sending RTP data BEFORE the stream is registered,
-    //    so mediasoup has data flowing when the client creates consumers.
-    const ffmpegRtpTarget = listenInfo.ip === "0.0.0.0" ? "127.0.0.1" : listenInfo.ip;
+    // 2. Spawn ffmpeg via Bun.spawn (matching working reference exactly)
+    // Use the raw listenInfo.ip as RTP target — the working music-bot sends to 0.0.0.0 directly
+    const rtpTargetHost = listenInfo.ip;
 
     // Volume: setting is 0-100, ffmpeg volume filter uses decimal (0.0-1.0)
     const volumePercent = settings.get("volume") as number;
     const volumeDecimal = Math.max(0, Math.min(100, volumePercent)) / 100;
-    debugLog(`Spawning ffmpeg → rtp://${ffmpegRtpTarget}:${rtpPort} (SSRC=${ssrc}, volume=${volumePercent}%/${volumeDecimal})`);
+    debugLog(`Spawning ffmpeg → rtp://${rtpTargetHost}:${rtpPort} (SSRC=${ssrc}, volume=${volumePercent}%/${volumeDecimal})`);
 
     const ffmpegArgs = [
+      "ffmpeg",
       "-hide_banner",
+      "-nostats",
       "-loglevel", settings.get("debug") ? "verbose" : "warning",
-      "-stats_period", "5",
       "-re",
       "-i", mp3Path,
       "-vn",
       "-af", `volume=${volumeDecimal}`,
       "-c:a", "libopus",
-      "-application", "audio",
-      "-b:a", "128k",
       "-ar", "48000",
       "-ac", "2",
-      "-frame_duration", "20",
-      "-ssrc", String(ssrc),
+      "-b:a", "128k",
+      "-application", "audio",
       "-payload_type", "111",
+      "-ssrc", String(ssrc),
       "-f", "rtp",
-      `rtp://${ffmpegRtpTarget}:${rtpPort}?pkt_size=1200`,
+      `rtp://${rtpTargetHost}:${rtpPort}?pkt_size=1200`,
     ];
-    debugLog(`ffmpeg args: ${ffmpegArgs.join(" ")}`);
-    const ffmpeg = spawn("ffmpeg", ffmpegArgs);
+    debugLog(`ffmpeg args: ${ffmpegArgs.slice(1).join(" ")}`);
+
+    const ffmpeg = Bun.spawn({
+      cmd: ffmpegArgs,
+      stdout: "ignore",
+      stderr: "pipe",
+      stdin: "ignore",
+    });
     debugLog(`ffmpeg spawned — PID=${ffmpeg.pid}`);
 
-    // Track producer score changes (proves RTP data is flowing)
-    producer.on("score", (score: unknown) => {
-      debugLog(`Producer score: ${JSON.stringify(score)}`);
-    });
-    transport.on("tuple", (tuple: unknown) => {
-      debugLog(`Transport tuple (RTP connected): ${JSON.stringify(tuple)}`);
-    });
-
-    // 3. Small delay to let ffmpeg start sending RTP, then register the stream.
-    //    This ensures mediasoup has an active data flow before the client
-    //    receives the onNewProducer event and creates a consumer.
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
+    // 3. Register stream with Sharkord (immediately after spawn, no delay)
     const stream = ctx.actions.voice.createStream({
       channelId,
       title: `Hero Intro: ${label}`,
       key: `hero-intro-${channelId}-${userId}`,
       producers: { audio: producer },
     });
-    debugLog(`Stream registered (after ffmpeg start)`);
+    debugLog(`Stream registered`);
+
+    // Track producer score changes (proves RTP data is flowing)
+    producer.on("score", (score: unknown) => {
+      debugLog(`Producer score: ${JSON.stringify(score)}`);
+    });
+
+    // Server-side test: create our OWN consumer to verify mediasoup routing works
+    let testConsumerInterval: ReturnType<typeof setInterval> | undefined;
+    try {
+      const testTransport = await router.createPlainTransport({
+        listenIp: { ip: listenInfo.ip, announcedIp: listenInfo.announcedAddress },
+        rtcpMux: true,
+        comedia: false,
+      });
+      const testConsumer = await testTransport.consume({
+        producerId: producer.id,
+        rtpCapabilities: router.rtpCapabilities,
+      });
+      if (testConsumer.paused) {
+        await testConsumer.resume();
+      }
+      debugLog(`Test consumer created: id=${testConsumer.id}, paused=${testConsumer.paused}, kind=${testConsumer.kind}`);
+      debugLog(`Test consumer rtpParams: ${JSON.stringify(testConsumer.rtpParameters.codecs[0])}`);
+
+      // Connect test transport to a local UDP port to receive data
+      const testPort = testTransport.tuple.localPort;
+      debugLog(`Test consumer transport port: ${testPort}`);
+
+      testConsumerInterval = setInterval(async () => {
+        try {
+          const stats = await testConsumer.getStats();
+          debugLog(`Test consumer stats: ${JSON.stringify(stats)}`);
+          const pStats = await producer.getStats();
+          const ps = (pStats as unknown as Array<{ packetCount: number; byteCount: number; score: number }>)[0];
+          debugLog(`Producer: ${ps?.packetCount ?? 0} pkts, ${ps?.byteCount ?? 0} bytes, score=${ps?.score ?? 0}`);
+        } catch { /* ignore */ }
+      }, 5000);
+
+      // Also check client consumer
+      setTimeout(async () => {
+        try {
+          const dump = await router.dump();
+          const entry = dump.mapProducerIdConsumerIds.find((e: { key: string }) => e.key === producer.id);
+          debugLog(`=== ROUTER STATE ===`);
+          debugLog(`Consumers for our producer: ${JSON.stringify(entry)}`);
+          debugLog(`All transports: ${JSON.stringify(dump.transportIds)}`);
+          debugLog(`All producer→consumer mappings: ${JSON.stringify(dump.mapProducerIdConsumerIds)}`);
+        } catch { /* ignore */ }
+      }, 3000);
+    } catch (err) {
+      debugLog(`Test consumer error: ${String(err)}`);
+    }
+
+    const consumerCheckInterval = testConsumerInterval;
 
     // Cleanup function — tears down transport, producer, stream
     const cleanup = () => {
-      try { stream.remove(); } catch { /* ignore */ }
+      clearInterval(consumerCheckInterval);
       try { producer.close(); } catch { /* ignore */ }
       try { transport.close(); } catch { /* ignore */ }
       debugLog(`Cleaned up audio resources for ${procKey}`);
@@ -316,29 +358,33 @@ const onLoad = async (ctx: PluginContext) => {
 
     activeSessions.set(procKey, { ffmpeg, cleanup });
 
-    // Collect ffmpeg stderr for debug output (split on \r and \n — ffmpeg uses \r for progress)
-    let ffmpegStderrBuf = "";
-    ffmpeg.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
-      ffmpegStderrBuf += text;
-      const lines = ffmpegStderrBuf.split(/\r\n|\r|\n/);
-      ffmpegStderrBuf = lines.pop() ?? "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed) debugLog(`ffmpeg[${ffmpeg.pid}]: ${trimmed}`);
-      }
-    });
+    // Read ffmpeg stderr in background for debug logging
+    if (ffmpeg.stderr) {
+      (async () => {
+        try {
+          const reader = ffmpeg.stderr.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split(/\r\n|\r|\n/);
+            buf = lines.pop() ?? "";
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed) debugLog(`ffmpeg[${ffmpeg.pid}]: ${trimmed}`);
+            }
+          }
+          if (buf.trim()) debugLog(`ffmpeg[${ffmpeg.pid}]: ${buf.trim()}`);
+        } catch { /* ignore */ }
+      })();
+    }
 
-    ffmpeg.on("close", (code: number | null) => {
-      if (ffmpegStderrBuf.trim()) debugLog(`ffmpeg[${ffmpeg.pid}]: ${ffmpegStderrBuf.trim()}`);
+    // Wait for ffmpeg to finish, then clean up
+    ffmpeg.exited.then((code) => {
       debugLog(`ffmpeg[${ffmpeg.pid}] exited — code=${code ?? "null"}`);
       ctx.log(`Playback for "${label}" finished (ffmpeg exit code ${code ?? "null"})`);
-      activeSessions.delete(procKey);
-      cleanup();
-    });
-
-    ffmpeg.on("error", (err: Error) => {
-      ctx.error(`ffmpeg error for "${label}": ${err.message}`);
       activeSessions.delete(procKey);
       cleanup();
     });
@@ -358,7 +404,7 @@ const onLoad = async (ctx: PluginContext) => {
     // Kill any active playback sessions for this channel
     for (const [key, session] of activeSessions) {
       if (key.startsWith(`${channelId}-`)) {
-        session.ffmpeg.kill("SIGTERM");
+        session.ffmpeg.kill();
         session.cleanup();
         activeSessions.delete(key);
       }
@@ -480,7 +526,7 @@ const onLoad = async (ctx: PluginContext) => {
         return "No intro is currently playing.";
       }
       for (const [key, session] of activeSessions) {
-        session.ffmpeg.kill("SIGTERM");
+        session.ffmpeg.kill();
         session.cleanup();
         activeSessions.delete(key);
       }
