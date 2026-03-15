@@ -52,15 +52,16 @@
 | REQ-CMD-001 | `/hero-enable` setzt die Einstellung `enabled` auf `true` und bestätigt die Aktivierung per Rückmeldung. | Implemented | Must | `src/server.ts` L217–L226 |
 | REQ-CMD-002 | `/hero-disable` setzt die Einstellung `enabled` auf `false` und bestätigt die Deaktivierung per Rückmeldung. | Implemented | Must | `src/server.ts` L229–L238 |
 | REQ-CMD-003 | `/hero-stop` beendet sofort alle laufenden ffmpeg-Prozesse (SIGTERM) und gibt eine Bestätigung zurück. Sind keine Intros aktiv, wird eine entsprechende Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L241–L256 |
-| REQ-CMD-004 | `/hero-set <displayName> <audioFileName>` speichert ein DisplayName→Audio-Mapping. Der `audioFileName` ist nur der Dateiname (nicht der volle Pfad); die Datei wird im festen Verzeichnis `<plugin-dir>/music/` gesucht. Vor dem Speichern wird geprüft, dass der Dateiname auf `.mp3` oder `.mpeg` endet und die Datei im music-Ordner existiert. Fehlerhafte Eingaben werden mit einer Fehlermeldung quittiert. | Implemented | Must | `src/server.ts` L259–L299 |
+| REQ-CMD-004 | `/hero-set <displayName> <audioFileName>` speichert ein DisplayName→Audio-Mapping. Der `audioFileName` kann **mit oder ohne Dateiendung** angegeben werden (z.B. `eisenbart` oder `eisenbart.mp3`). Die Suche ist case-insensitive. Bei Namens-Duplikaten (z.B. `song.mp3` und `song.mpeg`) wird der User aufgefordert, den vollständigen Dateinamen mit Endung anzugeben. Die Datei wird im festen Verzeichnis `<plugin-dir>/music/` gesucht. Wird keine passende Datei gefunden, wird eine Fehlermeldung mit der Liste verfügbarer Dateien angezeigt. | Implemented | Must | `src/server.ts` L335–L375 |
 | REQ-CMD-005 | `/hero-remove <displayName>` entfernt das MP3-Mapping für den angegebenen DisplayName. Existiert kein Mapping, wird eine Info-Meldung zurückgegeben. | Implemented | Must | `src/server.ts` L302–L327 |
 | REQ-CMD-006 | `/hero-list` gibt eine formatierte Liste aller DisplayName→Audio-Zuordnungen im Format `DisplayName: audioFileName` zurück. Sind keine Mappings vorhanden, wird eine entsprechende Info-Meldung angezeigt. | Implemented | Must | `src/server.ts` L330–L344 |
 | REQ-CMD-007 | `/hero-files` listet alle verfügbaren Audio-Dateien (`.mp3` und `.mpeg`) auf, die im Verzeichnis `<plugin-dir>/music/` liegen. So kann der Admin sehen, welche Dateien zum Zuordnen verfügbar sind. | Implemented | Should | `src/server.ts` L347–L366 |
-| REQ-CMD-008 | `/hero-debug` toggelt das Setting `debug` zwischen `true` und `false` und gibt eine Status-Meldung zurück, ob Debug-Modus aktiviert oder deaktiviert wurde. | Implemented | Should | `src/server.ts` L513–L526 |
-| REQ-CMD-009 | `/hero-set-me <audioFileName>` mappt den ausführenden User auf die angegebene Audio-Datei. Der Username wird über `invokerCtx.userId` aus dem User-Cache (userId→username, befüllt durch `user:joined`-Events) ermittelt. Vor dem Speichern wird geprüft, dass der Dateiname auf `.mp3` oder `.mpeg` endet und die Datei im music-Ordner existiert. Ist der Username nicht im Cache verfügbar, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L369–L414 |
+| REQ-CMD-008 | ~~`/hero-debug`~~ **Entfernt.** Debug-Modus wird ausschließlich über das Setting `debug` in der Plugin-Settings-UI gesteuert (siehe REQ-CFG-004). Kein separater Command mehr nötig. | Removed | — | — |
+| REQ-CMD-009 | `/hero-set-me <audioFileName>` mappt den ausführenden User auf die angegebene Audio-Datei. Der `audioFileName` kann **mit oder ohne Dateiendung** angegeben werden (case-insensitive). Bei Namens-Duplikaten wird der User aufgefordert, den vollständigen Dateinamen mit Endung anzugeben. Der Username wird über `invokerCtx.userId` aus dem User-Cache (userId→username, befüllt durch `user:joined`-Events) ermittelt. Ist der Username nicht im Cache verfügbar, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L440–L490 |
 | REQ-CMD-010 | `/hero-dump-context` gibt den vollständigen `invokerCtx` als JSON-Dump in die Server-Logs aus und zeigt ihn dem Aufrufer als formatiertes JSON an. Dient dem Reverse-Engineering der SDK-Typen. | Implemented | Could | `src/server.ts` L528–L546 |
 | REQ-CMD-011 | `/hero-play-me` spielt das eigene Intro des ausführenden Users ab. Der Command ermittelt über `invokerCtx.userId` den `username` aus dem User-Cache (userId→username) und sucht das zugehörige Audio-Mapping in der MusicMap. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping vorhanden, wird eine Info-Meldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L417–L462 |
 | REQ-CMD-012 | `/hero-play <displayName>` spielt das Intro einer anderen Person ab. Der Command akzeptiert ein Argument `displayName: string`, sucht diesen in der MusicMap und spielt die zugehörige Audio-Datei ab. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping für den displayName vorhanden, wird eine Info-Meldung zurückgegeben. Existiert die zugeordnete Audio-Datei nicht, wird eine Fehlermeldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L465–L511 |
+| REQ-CMD-013 | `/hero-play-song <songName>` spielt eine beliebige Audio-Datei aus dem music-Verzeichnis im aktuellen Voice-Channel des Aufrufers ab. Der `songName` kann **mit oder ohne Dateiendung** angegeben werden (z.B. `eisenbart` oder `eisenbart.mp3`). Die Suche ist case-insensitive. Existieren mehrere Dateien mit gleichem Namen aber unterschiedlicher Endung (z.B. `song.mp3` und `song.mpeg`), wird der User darauf hingewiesen und muss den vollständigen Dateinamen mit Endung angeben. Wird kein passender Song gefunden, wird eine Fehlermeldung mit der Liste verfügbarer Dateien angezeigt. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L528–L595 |
 
 ### Abnahmekriterien REQ-CMD
 
@@ -69,20 +70,20 @@
 | REQ-CMD-001 | Ausführung → Setting `enabled` ist `true`, Rückmeldung enthält Bestätigung. |
 | REQ-CMD-002 | Ausführung → Setting `enabled` ist `false`, Rückmeldung enthält Bestätigung. |
 | REQ-CMD-003 | Bei laufenden Intros: alle ffmpeg-Prozesse beendet, `activeProcesses`-Map leer. Ohne laufende Intros: Info-Meldung. |
-| REQ-CMD-004-A | Dateiendung ist weder `.mp3` noch `.mpeg` → Fehlermeldung "Only MP3 and MPEG files are supported." |
-| REQ-CMD-004-B | Audio-Datei existiert nicht im `<plugin-dir>/music/`-Ordner → Fehlermeldung. |
-| REQ-CMD-004-C | Gültige `.mp3` oder `.mpeg` Datei im music-Ordner → Mapping `displayName → audioFileName` in `music-map.json` gespeichert, Bestätigung. |
+| REQ-CMD-004-A | Eingabe ohne Endung + genau eine passende Datei → Mapping mit aufgelöstem Dateinamen gespeichert, Bestätigung. |
+| REQ-CMD-004-B | Eingabe ohne Endung + mehrere passende Dateien → Warnung mit Duplikat-Liste, kein Mapping. |
+| REQ-CMD-004-C | Eingabe mit Endung + Datei existiert → Mapping gespeichert, Bestätigung. |
+| REQ-CMD-004-D | Keine passende Datei gefunden → Fehlermeldung mit Liste verfügbarer Dateien. |
 | REQ-CMD-005-A | Bestehende Zuordnung für DisplayName → Eintrag entfernt, Bestätigung. |
 | REQ-CMD-005-B | Keine Zuordnung für DisplayName vorhanden → Info-Meldung. |
 | REQ-CMD-006-A | Mindestens ein Mapping vorhanden → formatierte Liste mit `DisplayName: audioFileName`. |
 | REQ-CMD-006-B | Keine Mappings → Info-Meldung "No intro mappings configured yet." |
 | REQ-CMD-007-A | Mindestens eine `.mp3` oder `.mpeg` Datei im music-Ordner → formatierte Liste der Dateinamen. |
 | REQ-CMD-007-B | Keine Audio-Dateien (`.mp3`/`.mpeg`) im music-Ordner → Info-Meldung. |
-| REQ-CMD-008-A | Ausführung bei `debug=false` → Setting wird `true`, Rückmeldung enthält "enabled". |
-| REQ-CMD-008-B | Ausführung bei `debug=true` → Setting wird `false`, Rückmeldung enthält "disabled". |
-| REQ-CMD-009-A | Gültige `.mp3`/`.mpeg` Datei im music-Ordner + Username im User-Cache vorhanden → Mapping `username → audioFileName` in `music-map.json` gespeichert, Bestätigung. |
-| REQ-CMD-009-B | Dateiendung ist weder `.mp3` noch `.mpeg` → Fehlermeldung. |
-| REQ-CMD-009-C | Audio-Datei existiert nicht im music-Ordner → Fehlermeldung. |
+| REQ-CMD-008 | **Entfernt.** Debug wird über Plugin-Settings-UI gesteuert (REQ-CFG-004). |
+| REQ-CMD-009-A | Eingabe ohne Endung + genau eine passende Datei + Username im Cache → Mapping gespeichert, Bestätigung. |
+| REQ-CMD-009-B | Eingabe ohne Endung + mehrere passende Dateien → Warnung mit Duplikat-Liste, kein Mapping. |
+| REQ-CMD-009-C | Keine passende Datei gefunden → Fehlermeldung mit Liste verfügbarer Dateien. |
 | REQ-CMD-009-D | Username ist nicht im User-Cache verfügbar → Fehlermeldung. |
 | REQ-CMD-010 | Ausführung → Server-Log enthält JSON-Dump des `invokerCtx`, Rückmeldung enthält formatiertes JSON. |
 | REQ-CMD-011-A | Ausführung durch User mit konfiguriertem Mapping + aktiver Voice-Channel → eigenes Intro wird im Voice-Channel des Aufrufers abgespielt. |
@@ -92,6 +93,11 @@
 | REQ-CMD-012-B | Ausführung mit displayName ohne Mapping → Info-Meldung, keine Wiedergabe. |
 | REQ-CMD-012-C | Ausführung mit displayName-Mapping, aber Audio-Datei existiert nicht → Fehlermeldung. |
 | REQ-CMD-012-D | Ausführung ohne `currentVoiceChannelId` im Context → Fehlermeldung. |
+| REQ-CMD-013-A | Ausführung mit `songName` ohne Endung + genau eine passende Datei vorhanden → Song wird im Voice-Channel abgespielt. |
+| REQ-CMD-013-B | Ausführung mit `songName` mit Endung + Datei existiert → Song wird im Voice-Channel abgespielt. |
+| REQ-CMD-013-C | Ausführung mit `songName` ohne Endung + mehrere Dateien mit gleichem Namen aber unterschiedlicher Endung → Warnung mit Liste der Duplikate, User muss vollständigen Dateinamen angeben. |
+| REQ-CMD-013-D | Ausführung mit `songName` ohne Match → Fehlermeldung mit Liste aller verfügbaren Dateien. |
+| REQ-CMD-013-E | Ausführung ohne `currentVoiceChannelId` im Context → Fehlermeldung. |
 
 ---
 
@@ -229,11 +235,12 @@
 | REQ-CMD-005 | `src/server.ts` L302–L327 | `tests/unit/server.test.ts` |
 | REQ-CMD-006 | `src/server.ts` L330–L344 | `tests/unit/server.test.ts` |
 | REQ-CMD-007 | `src/server.ts` L347–L366 | `tests/unit/server.test.ts` |
-| REQ-CMD-008 | `src/server.ts` L513–L526 | — (offen) |
+| REQ-CMD-008 | **Entfernt** (Debug über Settings-UI, REQ-CFG-004) | — |
 | REQ-CMD-009 | `src/server.ts` L369–L414 | `tests/unit/server.test.ts` |
 | REQ-CMD-010 | `src/server.ts` L528–L546 | — (offen) |
 | REQ-CMD-011 | `src/server.ts` L417–L462 | `tests/unit/server.test.ts` |
 | REQ-CMD-012 | `src/server.ts` L465–L511 | `tests/unit/server.test.ts` |
+| REQ-CMD-013 | `src/server.ts` L528–L595 | — (offen) |
 | REQ-CFG-001 | `src/server.ts` L68–L74 | `tests/unit/server.test.ts` |
 | REQ-CFG-002 | `src/server.ts` L75–L82 | — (offen) |
 | REQ-CFG-003 | `src/server.ts` L548 | — (offen) |
@@ -306,3 +313,5 @@
 | 2026-03-13 | Play-Commands: REQ-CMD-011 (`/hero-play-me`), REQ-CMD-012 (`/hero-play <displayName>`) hinzugefügt. Erweitertes Logging: REQ-DBG-005 (Command-Logging), REQ-DBG-006 (User-Cache-Logging), REQ-DBG-007 (playIntroForUser State-Dump) hinzugefügt. | Requirements Engineer |
 | 2026-03-14 | Audit & Korrektur: REQ-CMD-008 implementiert (fehlte). REQ-CMD-011/012 Status → Implemented. REQ-DBG-005/006/007 Status → Implemented. REQ-CMD-009 Beschreibung korrigiert (userId→Cache statt invokerCtx.username). REQ-CMD-010 zeigt jetzt JSON dem Aufrufer. Alle Zeilennummern aktualisiert. Sektionsreihenfolge korrigiert (6 vor 7). | Validator |
 | 2026-03-14 | Neue Requirements: REQ-DATA-007 (User-Cache Persistenz), REQ-CORE-008 (Concurrent Playback Protection). Concurrent-Playback-Bug behoben. | Requirements Engineer |
+| 2026-03-15 | REQ-CMD-008 (`/hero-debug`) entfernt — Debug wird ausschließlich über Settings-UI gesteuert (REQ-CFG-004). REQ-CMD-013 (`/hero-play-song`) hinzugefügt: Song-Wiedergabe mit optionaler Dateiendung und Duplikat-Erkennung. Audio-Playback-Timing korrigiert (Stream vor ffmpeg, Consumer-Setup-Delay). | Developer |
+| 2026-03-15 | Flexible Dateinamen-Suche: REQ-CMD-004 (`/hero-set`) und REQ-CMD-009 (`/hero-set-me`) akzeptieren jetzt Dateinamen mit oder ohne Endung (case-insensitive, Duplikat-Erkennung). Gemeinsame `resolveAudioFile`-Hilfsfunktion extrahiert und in allen 3 betroffenen Commands verwendet. Abnahmekriterien aktualisiert. | Developer |
