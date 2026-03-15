@@ -3,3 +3,4 @@ dist/
 *.zip
 .DS_Store
 /tests/test_music
+.claude/settings.local.json

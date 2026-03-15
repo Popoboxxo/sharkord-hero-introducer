@@ -1,10 +1,13 @@
 ---
 name: hi-validator
 description: "Validator-Agent für sharkord-hero-introducer. Prüft entwickelte Inhalte gegen Anforderungen, validiert Traceability, Definition of Done und Codequalität."
-argument-hint: "Validierung einer Implementierung, DoD-Check, Traceability-Audit, oder Code-Review gegen REQ-IDs"
-tools: ['read', 'search', 'execute', 'todo']
+tools:
+  - Bash
+  - Read
+  - Glob
+  - Grep
+  - TodoWrite
 ---
-
 
 # Validator — sharkord-hero-introducer
 

@@ -1,10 +1,18 @@
 ---
 name: hero-introducer
 description: "Orchestrator-Agent für sharkord-hero-introducer. Koordiniert spezialisierte Sub-Agenten: Requirements Engineer, Developer, Tester, Validator und Documenter für Hero-Intro-Plugin-Entwicklung."
-argument-hint: "Feature-Anforderung, Bugfix, Test, Validierung, Doku-Update, oder Docker-Testsystem starten"
-tools: ['vscode', 'execute', 'read', 'agent', 'edit', 'search', 'web', 'todo']
+tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - WebFetch
+  - WebSearch
+  - Agent
+  - TodoWrite
 ---
-
 
 # Orchestrator — sharkord-hero-introducer
 

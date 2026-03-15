@@ -1,10 +1,16 @@
 ---
 name: hi-developer
 description: "Developer-Agent für sharkord-hero-introducer. Implementiert Features und Bugfixes nach REQ-IDs mit strikten Code-Konventionen, TDD-Workflow und Sharkord Plugin-SDK Patterns."
-argument-hint: "REQ-xxx implementieren, Bugfix beschreiben, oder Refactoring-Aufgabe"
-tools: ['vscode', 'execute', 'read', 'agent', 'edit', 'search', 'todo']
+tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Agent
+  - TodoWrite
 ---
-
 
 # Developer — sharkord-hero-introducer
 

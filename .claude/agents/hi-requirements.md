@@ -1,10 +1,14 @@
 ---
 name: hi-requirements
 description: "Requirements Engineer für sharkord-hero-introducer. Nimmt Anforderungen auf, analysiert sie, vergibt REQ-IDs, pflegt REQUIREMENTS.md und prüft Traceability."
-argument-hint: "Neue Anforderung beschreiben, bestehende REQ-ID prüfen, oder Traceability-Analyse anfordern"
-tools: ['read', 'edit', 'search', 'todo']
+tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - TodoWrite
 ---
-
 
 # Requirements Engineer — sharkord-hero-introducer
 

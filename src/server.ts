@@ -136,6 +136,10 @@ const onLoad = async (ctx: PluginContext) => {
   // does not expose a per-voice-channel join event). The intro is played in
   // the first currently active voice channel.
 
+  /** Delay (ms) before playing the intro after a user connects to the server.
+   *  Gives the user time to join a voice channel (SDK has no voice:user_joined event). */
+  const INTRO_DELAY_MS = 5_000;
+
   ctx.events.on("user:joined", async ({ userId, username }) => {
     debugLog(`>>> user:joined event — userId=${userId}, username="${username}"`);
 
@@ -193,6 +197,11 @@ const onLoad = async (ctx: PluginContext) => {
       );
       return;
     }
+
+    // Wait before playing so the user has time to join a voice channel
+    // (the SDK only has user:joined for server connect, not voice channel join)
+    debugLog(`Waiting ${INTRO_DELAY_MS}ms before playing intro for "${username}"...`);
+    await new Promise((resolve) => setTimeout(resolve, INTRO_DELAY_MS));
 
     debugLog(`Active voice channels: [${[...activeChannels].join(", ")}] (count: ${activeChannels.size})`);
 
@@ -510,6 +519,21 @@ const onLoad = async (ctx: PluginContext) => {
     },
   });
 
+  // /hero-debug – toggle debug setting
+  ctx.commands.register({
+    name: "hero-debug",
+    description: "Toggle debug mode on/off.",
+    args: [],
+    async executes(_invokerCtx: TInvokerContext) {
+      const current = settings.get("debug");
+      const next = !current;
+      settings.set("debug", next);
+      return next
+        ? "🐛 Debug mode enabled."
+        : "🔇 Debug mode disabled.";
+    },
+  });
+
   // /hero-dump-context – logs the full invokerCtx for debugging SDK types
   ctx.commands.register<{ testArg: string }>({
     name: "hero-dump-context",
@@ -526,7 +550,7 @@ const onLoad = async (ctx: PluginContext) => {
     async executes(...params: unknown[]) {
       const dump = params.map((p, i) => `param[${i}]: ${JSON.stringify(p, null, 2)}`).join("\n\n");
       ctx.log(`[DEBUG] Command params (${params.length} total):\n${dump}`);
-      return `📋 Dumped ${params.length} params to server log.`;
+      return `📋 Context dump:\n\`\`\`json\n${dump}\n\`\`\``;
     },
   });
 
@@ -550,6 +574,14 @@ async function playIntroForUser(
 ): Promise<void> {
   debugLog(`playIntroForUser: state dump — activeProcesses=${activeProcesses.size}, activeChannels=[${[...activeChannels].join(", ")}], targetChannelId=${targetChannelId ?? "(auto)"}`);
 
+  // Stop any existing playback for this userId before starting a new one
+  const existingProc = activeProcesses.get(userId);
+  if (existingProc) {
+    debugLog(`Stopping existing playback for userId=${userId} before starting new one`);
+    existingProc.kill("SIGTERM");
+    activeProcesses.delete(userId);
+  }
+
   // Use the specified channel or fall back to the first active one
   const channelId = targetChannelId ?? [...activeChannels][0];
   if (channelId === undefined) {
@@ -568,44 +600,47 @@ async function playIntroForUser(
     return;
   }
 
-  const listenInfo = ctx.actions.voice.getListenInfo();
-  debugLog(`listenInfo: ip=${listenInfo.ip}, announcedAddress=${listenInfo.announcedAddress}`);
+  // getListenInfo() may be async (music-bot uses await)
+  const listenInfo = await ctx.actions.voice.getListenInfo();
+  const { ip, announcedAddress } = listenInfo;
+  debugLog(`listenInfo: ip=${ip}, announcedAddress=${announcedAddress}`);
 
   try {
     // Create a plain RTP transport to inject audio
+    // Use listenIp format (proven working in sharkord-music-bot)
     const plainTransport = await router.createPlainTransport({
-      listenInfo: {
-        protocol: "udp",
-        ip: listenInfo.ip,
-        announcedAddress: listenInfo.announcedAddress,
-        portRange: { min: 40100, max: 40200 },
+      listenIp: {
+        ip,
+        announcedIp: announcedAddress,
       },
       rtcpMux: true,
       comedia: true,
+      enableSrtp: false,
     });
 
     const rtpPort = plainTransport.tuple.localPort;
-    // ffmpeg runs in the same container as mediasoup, so always send to 127.0.0.1
-    // (plainTransport.tuple.localIp returns the announcedAddress which is the public IP)
-    const rtpIp = "127.0.0.1";
+    const rtpIp = ip;
     debugLog(`PlainTransport created: publicIp=${plainTransport.tuple.localIp}, rtpTarget=${rtpIp}:${rtpPort}`);
 
+    // Random SSRC per playback (like music-bot) to avoid collisions
+    const ssrc = Math.floor(Math.random() * 1e9);
+
     // Produce audio on this transport (Opus is required by WebRTC/mediasoup)
+    // Match music-bot: empty parameters, explicit rtcpFeedback
     const producer = await plainTransport.produce({
       kind: "audio",
       rtpParameters: {
         codecs: [
           {
             mimeType: "audio/opus",
-            payloadType: 101,
+            payloadType: 111,
             clockRate: 48000,
             channels: 2,
-            parameters: {
-              "sprop-stereo": 1,
-            },
+            parameters: {},
+            rtcpFeedback: [],
           },
         ],
-        encodings: [{ ssrc: 11111111 + userId }],
+        encodings: [{ ssrc }],
       },
     });
 
@@ -617,36 +652,87 @@ async function playIntroForUser(
       producers: { audio: producer },
     });
 
-    debugLog(`Producer created, SSRC=${11111111 + userId}, stream key=hero-intro-${userId}`);
+    debugLog(`Producer created — id=${producer.id}, kind=${producer.kind}, paused=${producer.paused}, type=${producer.type}, SSRC=${ssrc}`);
+    debugLog(`Stream created — key=hero-intro-${userId}, channelId=${channelId}, title="Intro: ${username}"`);
+    debugLog(`PlainTransport details — id=${plainTransport.id}, tuple=${JSON.stringify(plainTransport.tuple)}, rtcpTuple=${JSON.stringify((plainTransport as any).rtcpTuple)}, sctpState=${(plainTransport as any).sctpState}`);
+    debugLog(`Producer rtpParameters: ${JSON.stringify(producer.rtpParameters)}`);
+    debugLog(`Router id=${router.id}, canConsume check: rtpCapabilities available=${!!router.rtpCapabilities}`);
+
+    // Log producer score to verify mediasoup receives RTP data
+    producer.on("score", (score: unknown) => {
+      debugLog(`Producer score update (id=${producer.id}): ${JSON.stringify(score)}`);
+    });
+
+    // Log producer pause/resume
+    producer.observer.on("pause", () => {
+      debugLog(`Producer PAUSED (id=${producer.id})`);
+    });
+    producer.observer.on("resume", () => {
+      debugLog(`Producer RESUMED (id=${producer.id})`);
+    });
+    producer.observer.on("close", () => {
+      debugLog(`Producer CLOSED (id=${producer.id})`);
+    });
+
+    // Log when a new consumer is created for this producer (proves client consumed it)
+    producer.observer.on("newconsumer" as any, (consumer: any) => {
+      debugLog(`*** NEW CONSUMER for producer ${producer.id}: consumerId=${consumer?.id}, kind=${consumer?.kind}, type=${consumer?.type}, paused=${consumer?.paused}`);
+    });
+
+    // Log transport state changes (comedia mode — transport connects when first RTP packet arrives)
+    plainTransport.on("tuple", (tuple: unknown) => {
+      debugLog(`PlainTransport tuple updated (RTP connected): ${JSON.stringify(tuple)}`);
+    });
+    plainTransport.observer.on("close", () => {
+      debugLog(`PlainTransport CLOSED (id=${plainTransport.id})`);
+    });
+    plainTransport.observer.on("newproducer", (p: any) => {
+      debugLog(`PlainTransport newproducer event: ${p?.id}`);
+    });
 
     // Spawn ffmpeg to decode the MP3 and send it as RTP/Opus to mediasoup
-    // IMPORTANT: The SSRC must match the one configured in the producer, otherwise
-    // mediasoup will drop the packets and no audio will be forwarded to consumers.
-    const ssrc = 11111111 + userId;
-    debugLog(`Spawning ffmpeg: -re -i "${mp3Path}" -vn -acodec libopus -ssrc ${ssrc} -f rtp rtp://${rtpIp}:${rtpPort}`);
+    debugLog(`Spawning ffmpeg: -re -i "${mp3Path}" -vn -acodec libopus -ssrc ${ssrc} -payload_type 111 -f rtp rtp://${rtpIp}:${rtpPort}`);
     const ffmpeg = spawn("ffmpeg", [
       "-re",
       "-i", mp3Path,
       "-vn",
       "-acodec", "libopus",
+      "-application", "audio",
       "-ab", "128k",
       "-ar", "48000",
       "-ac", "2",
       "-ssrc", String(ssrc),
+      "-payload_type", "111",
       "-f", "rtp",
-      `rtp://${rtpIp}:${rtpPort}?pkt_size=1316`,
+      `rtp://${rtpIp}:${rtpPort}?pkt_size=1200`,
     ]);
 
     activeProcesses.set(userId, ffmpeg);
+    debugLog(`ffmpeg spawned — PID=${ffmpeg.pid}, args=[${ffmpeg.spawnargs.join(" ")}]`);
 
+    // Collect ffmpeg stderr lines for debug output
+    let ffmpegStderrBuf = "";
     ffmpeg.stderr.on("data", (chunk: Buffer) => {
-      ctx.debug(`ffmpeg: ${chunk.toString()}`);
+      const text = chunk.toString();
+      ffmpegStderrBuf += text;
+      // Log each complete line
+      const lines = ffmpegStderrBuf.split("\n");
+      ffmpegStderrBuf = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          debugLog(`ffmpeg[${ffmpeg.pid}]: ${trimmed}`);
+        }
+      }
     });
 
     ffmpeg.on("close", (code: number | null) => {
-      ctx.log(
-        `Intro for ${username} finished (ffmpeg exited with code ${code ?? "null"})`,
-      );
+      // Flush remaining stderr
+      if (ffmpegStderrBuf.trim()) {
+        debugLog(`ffmpeg[${ffmpeg.pid}]: ${ffmpegStderrBuf.trim()}`);
+      }
+      debugLog(`ffmpeg[${ffmpeg.pid}] exited — code=${code ?? "null"}, producer.closed=${producer.closed}`);
+      ctx.log(`Intro for ${username} finished (ffmpeg exit code ${code ?? "null"})`);
       activeProcesses.delete(userId);
       stream.remove();
       producer.close();
@@ -655,6 +741,7 @@ async function playIntroForUser(
 
     ffmpeg.on("error", (err: Error) => {
       ctx.error(`ffmpeg error for ${username}: ${err.message}`);
+      debugLog(`ffmpeg error detail: ${err.stack ?? err.message}`);
       activeProcesses.delete(userId);
       stream.remove();
       try { producer.close(); } catch { /* ignore */ }

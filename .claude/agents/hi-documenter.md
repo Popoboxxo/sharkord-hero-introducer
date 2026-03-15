@@ -1,10 +1,14 @@
 ---
 name: hi-documenter
 description: "Dokumentations-Agent für sharkord-hero-introducer. Pflegt CODEBASE_OVERVIEW.md, ARCHITECTURE.md, README.md und Session-Erkenntnisse. Erzwingt zyklische Dokumentationsaktualisierung."
-argument-hint: "Doku aktualisieren, Erkenntnisse speichern, Codebase Overview updaten, oder README pflegen"
-tools: ['read', 'edit', 'search', 'todo']
+tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - TodoWrite
 ---
-
 
 # Documenter — sharkord-hero-introducer
 

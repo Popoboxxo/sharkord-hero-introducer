@@ -1,10 +1,16 @@
 ---
 name: hi-tester
 description: "Tester-Agent für sharkord-hero-introducer. Schreibt Unit-/Integration-Tests nach TDD-Workflow, führt Tests aus und stellt Testabdeckung pro REQ-ID sicher."
-argument-hint: "Tests für REQ-xxx schreiben, Testabdeckung prüfen, Test-Suite ausführen, oder Docker-Testsystem starten"
-tools: ['vscode', 'execute', 'read', 'agent', 'edit', 'search', 'todo']
+tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Agent
+  - TodoWrite
 ---
-
 
 # Tester — sharkord-hero-introducer
 
