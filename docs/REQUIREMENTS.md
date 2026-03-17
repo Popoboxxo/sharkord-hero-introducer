@@ -1,7 +1,7 @@
 # Requirements – sharkord-hero-introducer
 
 > **Version:** 0.1.0
-> **Stand:** 15. März 2026
+> **Stand:** 17. März 2026
 > **Alleinige Quelle der Wahrheit** für alle funktionalen und nichtfunktionalen Anforderungen.
 
 ---
@@ -21,29 +21,33 @@
 
 | REQ-ID | Beschreibung | Status | Priorität | Traceability |
 |--------|-------------|--------|-----------|--------------|
-| REQ-CORE-001 | Wenn ein User dem Sharkord-Server beitritt (`user:joined`-Event), wird anhand des `username` aus dem Event in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst und das Intro automatisch im ersten aktiven Voice-Channel abgespielt. Das Plugin unterstützt `.mp3` und `.mpeg` Dateien. | Implemented | Must | `src/server.ts` L422–L491 |
+| REQ-CORE-001 | Wenn ein User dem Sharkord-Server beitritt (`user:joined`-Event), wird anhand des `username` aus dem Event in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst. Nach einer konfigurierbaren Verzögerung (`INTRO_DELAY_MS`, aktuell 5000 ms) wird das Intro automatisch im ersten aktiven Voice-Channel (Insertion-Order des `activeChannels`-Set) abgespielt. Das Plugin unterstützt `.mp3` und `.mpeg` Dateien. | Implemented | Must | `src/server.ts` L419–L491 |
 | REQ-CORE-002 | Wenn für einen User kein MP3-Mapping konfiguriert ist, erfolgt **keine** Audiowiedergabe und **kein** Fehler. | Implemented | Must | `src/server.ts` L444–L447 |
 | REQ-CORE-003 | Die MP3-Datei wird vor der Wiedergabe auf Existenz geprüft; fehlt die Datei, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L462–L469 |
 | REQ-CORE-004 | Die Audiowiedergabe erfolgt über `ffmpeg` (MP3/MPEG → Opus-RTP) an einen mediasoup `PlainTransport`. Der Stream wird via `ctx.actions.voice.createStream` im Voice-Channel exponiert. Die Pipeline verwendet `Bun.spawn` (nicht `child_process.spawn`) und orientiert sich am funktionierenden Referenz-Plugin `sharkord-music-bot`. **BEKANNTER BUG:** Audio ist trotz vollständig funktionierender Server-Pipeline (Producer Score 10, Consumer existiert, RTP-Pakete fließen) nicht hörbar — vermutete Ursache ist Client-seitig (siehe Sektion "Bekannte Bugs"). | Implemented | Must | `src/server.ts` L201–L391 |
 | REQ-CORE-005 | Das Plugin trackt aktive Voice-Channels über die Events `voice:runtime_initialized` und `voice:runtime_closed` in einem lokalen Set. | Implemented | Must | `src/server.ts` L397–L413 |
-| REQ-CORE-006 | Ist kein aktiver Voice-Channel vorhanden, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L476–L479 |
+| REQ-CORE-006 | Ist kein aktiver Voice-Channel vorhanden, wird ein Debug-Log-Eintrag erzeugt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L476–L479 |
 | REQ-CORE-007 | Nach Ende der Wiedergabe (ffmpeg-Exit oder Fehler) werden Producer, PlainTransport und Stream automatisch aufgeräumt (`close`/`remove`). | Implemented | Must | `src/server.ts` L351–L357 |
 | REQ-CORE-008 | Pro userId darf maximal ein Intro gleichzeitig aktiv sein. Ein neuer Wiedergabe-Request für denselben User beendet zuerst die laufende Wiedergabe (SIGTERM), bevor die neue gestartet wird. | Implemented | Should | `src/server.ts` L210–L217 |
 | REQ-CORE-009 | Der Bot joint Voice-Channels nicht dauerhaft. Transport, Producer und Stream werden ausschließlich on-demand für die Dauer einer einzelnen Wiedergabe erstellt. Nach Wiedergabeende (ffmpeg-Exit) werden alle Ressourcen (Transport, Producer) automatisch aufgeräumt. Es verbleibt kein persistenter Bot im Channel. | Implemented | Must | `src/server.ts` L201–L391 |
+| REQ-CORE-010 | Zwischen dem `user:joined`-Event und dem Start der Intro-Wiedergabe wird eine konfigurierbare Verzögerung (`INTRO_DELAY_MS`, Default: 5000 ms) eingehalten, damit der User Zeit hat, einem Voice-Channel beizutreten. | Implemented | Must | `src/server.ts` L420, L472–L473 |
+| REQ-CORE-011 | Wenn ein Voice-Channel geschlossen wird (`voice:runtime_closed`), werden alle aktiven Playback-Sessions für diesen Channel automatisch beendet (ffmpeg-Kill, Cleanup, Session-Entfernung). | Implemented | Must | `src/server.ts` L402–L413 |
 
 ### Abnahmekriterien REQ-CORE
 
 | REQ-ID | Abnahmekriterium |
 |--------|-----------------|
-| REQ-CORE-001 | Ein User mit konfiguriertem Audio-Mapping (Matching über `username` aus `user:joined`-Event) joint → Audio-Pfad wird als `path.join(pluginDir, "music", audioFileName)` aufgelöst → alle Teilnehmer im Voice-Channel hören das Intro. |
+| REQ-CORE-001 | Ein User mit konfiguriertem Audio-Mapping (Matching über `username` aus `user:joined`-Event) joint → nach `INTRO_DELAY_MS` (5s) Verzögerung → Audio-Pfad wird als `path.join(pluginDir, "music", audioFileName)` aufgelöst → alle Teilnehmer im Voice-Channel hören das Intro. |
 | REQ-CORE-002 | Ein User ohne MP3-Mapping joint → keine hörbare Ausgabe, kein Fehler im Log. |
 | REQ-CORE-003 | MP3 in music-map.json verweist auf nicht-existente Datei → Fehler-Log-Eintrag, keine Wiedergabe. |
 | REQ-CORE-004 | Während der Wiedergabe ist ein ffmpeg-Prozess aktiv und sendet Opus-RTP an den konfigurierten Port. `Bun.spawn` wird verwendet. |
 | REQ-CORE-005 | Nach `voice:runtime_initialized` enthält das interne Set die Channel-ID; nach `voice:runtime_closed` nicht mehr. |
-| REQ-CORE-006 | User joint bei 0 aktiven Voice-Channels → Fehler-Log "No active voice channel found". |
+| REQ-CORE-006 | User joint bei 0 aktiven Voice-Channels → Debug-Log "No active voice channel", keine Wiedergabe. |
 | REQ-CORE-007 | Nach Wiedergabeende sind Producer und PlainTransport geschlossen und der Stream entfernt. |
 | REQ-CORE-008 | User hat laufendes Intro → neuer Wiedergabe-Request → altes Intro wird gestoppt (SIGTERM), neues Intro startet. |
 | REQ-CORE-009 | Vor Wiedergabe: kein Transport/Producer fuer den Channel vorhanden. Waehrend Wiedergabe: Transport+Producer+Stream existieren. Nach Wiedergabe: alle drei Ressourcen sind geschlossen/entfernt. |
+| REQ-CORE-010 | User joint → mindestens `INTRO_DELAY_MS` (5000 ms) vergehen bevor `playAudio` aufgerufen wird. |
+| REQ-CORE-011 | Voice-Channel wird geschlossen → alle `activeSessions` mit passendem channelId-Prefix werden beendet (kill + cleanup + delete). |
 
 ---
 
@@ -60,10 +64,11 @@
 | REQ-CMD-007 | `/hero-files` listet alle verfügbaren Audio-Dateien (`.mp3` und `.mpeg`) auf, die im Verzeichnis `<plugin-dir>/music/` liegen. So kann der Admin sehen, welche Dateien zum Zuordnen verfügbar sind. | Implemented | Should | `src/server.ts` L620–L639 |
 | REQ-CMD-008 | ~~`/hero-debug`~~ **Entfernt.** Debug-Modus wird ausschließlich über das Setting `debug` in der Plugin-Settings-UI gesteuert (siehe REQ-CFG-004). Kein separater Command mehr nötig. | Removed | — | — |
 | REQ-CMD-009 | `/hero-set-me <audioFileName>` mappt den ausführenden User auf die angegebene Audio-Datei. Der `audioFileName` kann **mit oder ohne Dateiendung** angegeben werden (case-insensitive). Bei Namens-Duplikaten wird der User aufgefordert, den vollständigen Dateinamen mit Endung anzugeben. Der Username wird über `invokerCtx.userId` aus dem User-Cache (userId→username, befüllt durch `user:joined`-Events) ermittelt. Ist der Username nicht im Cache verfügbar, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L641–L680 |
-| REQ-CMD-010 | `/hero-dump-context` gibt den vollständigen `invokerCtx` als JSON-Dump in die Server-Logs aus und zeigt ihn dem Aufrufer als formatiertes JSON an. Dient dem Reverse-Engineering der SDK-Typen. | Implemented | Could | `src/server.ts` L803–L821 |
+| REQ-CMD-010 | `/hero-dump-context` gibt alle übergebenen Command-Parameter (einschließlich `invokerCtx` und `args`) als JSON-Dump in die Server-Logs aus und zeigt sie dem Aufrufer als formatiertes JSON an. Akzeptiert ein optionales Argument `testArg: string`. Dient dem Reverse-Engineering der SDK-Typen. | Implemented | Could | `src/server.ts` L1168–L1186 |
 | REQ-CMD-011 | `/hero-play-me` spielt das eigene Intro des ausführenden Users ab. Der Command ermittelt über `invokerCtx.userId` den `username` aus dem User-Cache (userId→username) und sucht das zugehörige Audio-Mapping in der MusicMap. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping vorhanden, wird eine Info-Meldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L682–L719 |
 | REQ-CMD-012 | `/hero-play <displayName>` spielt das Intro einer anderen Person ab. Der Command akzeptiert ein Argument `displayName: string`, sucht diesen in der MusicMap und spielt die zugehörige Audio-Datei ab. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping für den displayName vorhanden, wird eine Info-Meldung zurückgegeben. Existiert die zugeordnete Audio-Datei nicht, wird eine Fehlermeldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L721–L762 |
 | REQ-CMD-013 | `/hero-play-song <songName>` spielt eine beliebige Audio-Datei aus dem music-Verzeichnis im aktuellen Voice-Channel des Aufrufers ab. Der `songName` kann **mit oder ohne Dateiendung** angegeben werden (z.B. `eisenbart` oder `eisenbart.mp3`). Die Suche ist case-insensitive. Existieren mehrere Dateien mit gleichem Namen aber unterschiedlicher Endung (z.B. `song.mp3` und `song.mpeg`), wird der User darauf hingewiesen und muss den vollständigen Dateinamen mit Endung angeben. Wird kein passender Song gefunden, wird eine Fehlermeldung mit der Liste verfügbarer Dateien angezeigt. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L764–L801 |
+| REQ-CMD-014 | `/hero-diagnose` führt eine vollständige Audio-Pipeline-Diagnose durch und gibt einen strukturierten Report mit PASS/FAIL/INFO pro Stage zurück. Der Aufrufer muss sich in einem Voice-Channel befinden. Details der Diagnose-Stages sind in REQ-DBG-008 spezifiziert. | Implemented | Should | `src/server.ts` L803–L1166 |
 
 ### Abnahmekriterien REQ-CMD
 
@@ -87,7 +92,7 @@
 | REQ-CMD-009-B | Eingabe ohne Endung + mehrere passende Dateien → Warnung mit Duplikat-Liste, kein Mapping. |
 | REQ-CMD-009-C | Keine passende Datei gefunden → Fehlermeldung mit Liste verfügbarer Dateien. |
 | REQ-CMD-009-D | Username ist nicht im User-Cache verfügbar → Fehlermeldung. |
-| REQ-CMD-010 | Ausführung → Server-Log enthält JSON-Dump des `invokerCtx`, Rückmeldung enthält formatiertes JSON. |
+| REQ-CMD-010 | Ausführung → Server-Log enthält JSON-Dump aller Command-Parameter (Anzahl + Inhalt pro Parameter), Rückmeldung enthält formatiertes JSON. |
 | REQ-CMD-011-A | Ausführung durch User mit konfiguriertem Mapping + aktiver Voice-Channel → eigenes Intro wird im Voice-Channel des Aufrufers abgespielt. |
 | REQ-CMD-011-B | Ausführung durch User ohne Mapping → Info-Meldung, keine Wiedergabe. |
 | REQ-CMD-011-C | Ausführung ohne `currentVoiceChannelId` im Context → Fehlermeldung. |
@@ -100,6 +105,9 @@
 | REQ-CMD-013-C | Ausführung mit `songName` ohne Endung + mehrere Dateien mit gleichem Namen aber unterschiedlicher Endung → Warnung mit Liste der Duplikate, User muss vollständigen Dateinamen angeben. |
 | REQ-CMD-013-D | Ausführung mit `songName` ohne Match → Fehlermeldung mit Liste aller verfügbaren Dateien. |
 | REQ-CMD-013-E | Ausführung ohne `currentVoiceChannelId` im Context → Fehlermeldung. |
+| REQ-CMD-014-A | Ausführung in Voice-Channel → strukturierter Report mit PASS/FAIL/INFO pro Stage (0-6) wird zurückgegeben und geloggt. |
+| REQ-CMD-014-B | Ausführung ohne Voice-Channel → FAIL in Stage 0, Report enthält Fehlermeldung. |
+| REQ-CMD-014-C | Nach Diagnose-Abschluss → Transport, Producer und ffmpeg-Prozess werden aufgeräumt. |
 
 ---
 
@@ -109,7 +117,7 @@
 |--------|-------------|--------|-----------|--------------|
 | REQ-CFG-001 | Das Plugin registriert eine Einstellung `enabled` (Typ: `boolean`, Default: `true`). Wenn `false`, wird bei keinem User-Join ein Intro abgespielt. | Implemented | Must | `src/server.ts` L67–L73 |
 | REQ-CFG-002 | Das Plugin registriert eine Einstellung `oncePerDay` (Typ: `boolean`, Default: `true`). Wenn `true`, wird jeder User maximal einmal pro Kalendertag begrüßt. | Implemented | Must | `src/server.ts` L74–L81 |
-| REQ-CFG-003 | Das Plugin aktiviert die Settings-UI im Sharkord-Frontend via `ctx.ui.enable()`, sodass Einstellungen im Frontend bearbeitet werden können. | Implemented | Should | `src/server.ts` L823 |
+| REQ-CFG-003 | Das Plugin aktiviert die Settings-UI im Sharkord-Frontend via `ctx.ui.enable()`, sodass Einstellungen im Frontend bearbeitet werden können. | Implemented | Should | `src/server.ts` L1188 |
 | REQ-CFG-004 | Das Plugin registriert eine Einstellung `debug` (Typ: `boolean`, Default: `false`). Wenn `true`, wird detailliertes Debug-Logging über die interne `debugLog`-Funktion aktiviert. | Implemented | Should | `src/server.ts` L82–L89 |
 | REQ-CFG-005 | Das Plugin registriert eine Einstellung `volume` (Typ: `number`, Default: `25`). Der Wert definiert die Lautstärke der Intro-Musik in Prozent (0–100%). Die Lautstärke wird server-seitig über den ffmpeg-Audiofilter `-af volume=<dezimalwert>` angewendet, wobei der Prozentwert in einen Dezimalwert (0.0–1.0) umgerechnet wird. Werte außerhalb des Bereichs werden auf 0 bzw. 100 begrenzt. | Implemented | Should | `src/server.ts` L90–L97, L255–L256, L267 |
 
@@ -161,8 +169,8 @@
 
 | REQ-ID | Beschreibung | Status | Priorität | Traceability |
 |--------|-------------|--------|-----------|--------------|
-| REQ-LIFE-001 | Das Plugin exportiert eine `onLoad`-Funktion, die beim Laden des Plugins durch Sharkord aufgerufen wird. `onLoad` registriert Settings, Events, Commands und aktiviert die UI. | Implemented | Must | `src/server.ts` L49, L835 |
-| REQ-LIFE-002 | Das Plugin exportiert eine `onUnload`-Funktion, die beim Entladen des Plugins durch Sharkord aufgerufen wird und einen Log-Eintrag erzeugt. | Implemented | Must | `src/server.ts` L831–L833, L835 |
+| REQ-LIFE-001 | Das Plugin exportiert eine `onLoad`-Funktion, die beim Laden des Plugins durch Sharkord aufgerufen wird. `onLoad` registriert Settings, Events, Commands und aktiviert die UI. Beim Laden wird "Hero Introducer loaded" und bei Abschluss "Hero Introducer ready" geloggt. | Implemented | Must | `src/server.ts` L49–L50, L1188–L1189, L1200 |
+| REQ-LIFE-002 | Das Plugin exportiert eine `onUnload`-Funktion, die beim Entladen des Plugins durch Sharkord aufgerufen wird und "Hero Introducer unloaded" loggt. | Implemented | Must | `src/server.ts` L1196–L1198, L1200 |
 | REQ-LIFE-003 | Der Build-Prozess (`bun build.ts`) erzeugt `dist/sharkord-hero-introducer/server.js` (ESM, target bun) und `dist/sharkord-hero-introducer/client.js` (ESM, target browser) sowie eine Kopie der `package.json`. | Implemented | Must | `build.ts` L1–L61 |
 | REQ-LIFE-004 | `client.ts` exportiert keine UI-Komponenten (leerer Client-Entry-Point). | Implemented | Could | `src/client.ts` L1–L2 |
 
@@ -208,7 +216,7 @@
 | REQ-DBG-005 | Bei jedem Command-Aufruf werden Command-Name, userId und übergebene Argumente via Debug-Log geloggt. | Implemented | Should | `src/server.ts` (diverse Command-Handler) |
 | REQ-DBG-006 | Beim User-Cache-Update (Persistierung der userId→username-Zuordnung) wird ein Debug-Log-Eintrag mit der aktualisierten Zuordnung erzeugt. | Implemented | Should | `src/server.ts` L425–L429 |
 | REQ-DBG-007 | In der Funktion `playAudio` wird ein vollständiger State-Dump geloggt, der mindestens die Anzahl aktiver Prozesse (`activeSessions.size`) und die Liste aktiver Voice-Channels (`activeChannels`) enthält. | Implemented | Should | `src/server.ts` L208 |
-| REQ-DBG-008 | `/hero-diagnose` führt eine vollständige Pipeline-Diagnose durch: Pre-flight (ffmpeg, Channels), Transport-Erstellung, Producer-Erstellung mit paused-Check, ffmpeg-Spawn mit Stats-Prüfung, Stream-Registration mit Consumer-Discovery via `producer.observer.on("newconsumer")`, Router-State-Dump. Gibt strukturierten Report mit PASS/FAIL pro Stage zurück. | Implemented | Should | `src/server.ts` (hero-diagnose Command) |
+| REQ-DBG-008 | `/hero-diagnose` führt eine vollständige Pipeline-Diagnose durch: Stage 0: Pre-flight (ffmpeg-Verfügbarkeit, aktive Channels), Stage 1: Transport-Erstellung, Stage 2: Producer-Erstellung mit paused-Check, Stage 3: ffmpeg-Spawn mit Stats-Prüfung (2s Wartezeit), Stage 4: Stream-Registration mit Consumer-Discovery via `producer.observer.on("newconsumer")` (5s Wartezeit), Stage 5: Router-State-Dump mit Consumer-Inspektion via `transportsForTesting`, Stage 6: Client-Transport Deep Inspection (ICE-State, DTLS-State, Consumer Outbound-RTP Stats). Gibt strukturierten Report mit PASS/FAIL/INFO pro Stage zurück. Räumt nach Abschluss Transport, Producer und ffmpeg-Prozess auf. | Implemented | Should | `src/server.ts` L803–L1166 |
 
 ### Abnahmekriterien REQ-DBG
 
@@ -221,7 +229,7 @@
 | REQ-DBG-005 | Command wird ausgeführt → Log enthält Command-Name, userId des Aufrufers und alle übergebenen Argumente. |
 | REQ-DBG-006 | User-Cache wird aktualisiert → Log enthält die persistierte userId→username-Zuordnung. |
 | REQ-DBG-007 | `playAudio` wird aufgerufen → Log enthält State-Dump mit `activeSessions`-Anzahl und `activeChannels`-Liste. |
-| REQ-DBG-008 | `/hero-diagnose` ausgeführt in Voice-Channel → Report mit 6 Stages (0-5), PASS/FAIL-Markierungen und Verdict wird als Chat-Antwort und Server-Log ausgegeben. |
+| REQ-DBG-008 | `/hero-diagnose` ausgeführt in Voice-Channel → Report mit 7 Stages (0-6), PASS/FAIL/INFO-Markierungen und Verdict wird als Chat-Antwort und Server-Log ausgegeben. |
 
 ---
 
@@ -237,15 +245,17 @@
 
 | REQ-ID | Implementiert in | Getestet in |
 |--------|-----------------|-------------|
-| REQ-CORE-001 | `src/server.ts` L422–L491 | `tests/unit/server.test.ts` |
+| REQ-CORE-001 | `src/server.ts` L419–L491 | `tests/unit/server.test.ts` |
 | REQ-CORE-002 | `src/server.ts` L444–L447 | — (offen) |
 | REQ-CORE-003 | `src/server.ts` L462–L469 | — (offen) |
-| REQ-CORE-004 | `src/server.ts` L201–L391 | — (offen) |
+| REQ-CORE-004 | `src/server.ts` L201–L391 | `tests/unit/play-audio.test.ts`, `tests/unit/play-audio-comparison.test.ts` |
 | REQ-CORE-005 | `src/server.ts` L397–L413 | — (offen) |
 | REQ-CORE-006 | `src/server.ts` L476–L479 | — (offen) |
-| REQ-CORE-007 | `src/server.ts` L351–L357 | — (offen) |
-| REQ-CORE-008 | `src/server.ts` L210–L217 | — (offen) |
+| REQ-CORE-007 | `src/server.ts` L351–L357 | `tests/unit/play-audio.test.ts` |
+| REQ-CORE-008 | `src/server.ts` L210–L217 | `tests/unit/play-audio.test.ts` |
 | REQ-CORE-009 | `src/server.ts` L201–L391 | — (offen) |
+| REQ-CORE-010 | `src/server.ts` L420, L472–L473 | — (offen) |
+| REQ-CORE-011 | `src/server.ts` L402–L413 | — (offen) |
 | REQ-CMD-001 | `src/server.ts` L497–L506 | — (offen) |
 | REQ-CMD-002 | `src/server.ts` L508–L517 | — (offen) |
 | REQ-CMD-003 | `src/server.ts` L519–L535 | — (offen) |
@@ -255,15 +265,16 @@
 | REQ-CMD-007 | `src/server.ts` L620–L639 | `tests/unit/server.test.ts` |
 | REQ-CMD-008 | **Entfernt** (Debug über Settings-UI, REQ-CFG-004) | — |
 | REQ-CMD-009 | `src/server.ts` L641–L680 | `tests/unit/server.test.ts` |
-| REQ-CMD-010 | `src/server.ts` L803–L821 | — (offen) |
+| REQ-CMD-010 | `src/server.ts` L1168–L1186 | — (offen) |
 | REQ-CMD-011 | `src/server.ts` L682–L719 | `tests/unit/server.test.ts` |
 | REQ-CMD-012 | `src/server.ts` L721–L762 | `tests/unit/server.test.ts` |
 | REQ-CMD-013 | `src/server.ts` L764–L801 | — (offen) |
+| REQ-CMD-014 | `src/server.ts` L803–L1166 | — (offen) |
 | REQ-CFG-001 | `src/server.ts` L67–L73 | `tests/unit/server.test.ts` |
 | REQ-CFG-002 | `src/server.ts` L74–L81 | — (offen) |
-| REQ-CFG-003 | `src/server.ts` L823 | — (offen) |
+| REQ-CFG-003 | `src/server.ts` L1188 | — (offen) |
 | REQ-CFG-004 | `src/server.ts` L82–L89 | — (offen) |
-| REQ-CFG-005 | `src/server.ts` L90–L97, L255–L256, L267 | — (offen) |
+| REQ-CFG-005 | `src/server.ts` L90–L97, L254–L256, L267 | `tests/unit/play-audio.test.ts` |
 | REQ-DATA-001 | `src/server.ts` L55 | — (offen) |
 | REQ-DATA-002 | `src/server.ts` L56 | — (offen) |
 | REQ-DATA-003 | `src/server.ts` L60 | `tests/unit/server.test.ts` |
@@ -271,8 +282,8 @@
 | REQ-DATA-005 | `src/server.ts` L61 | `tests/unit/server.test.ts` |
 | REQ-DATA-006 | `docker-compose.dev.yml` L31 | — (offen) |
 | REQ-DATA-007 | `src/server.ts` L57, L188–L192, L425–L429 | — (offen) |
-| REQ-LIFE-001 | `src/server.ts` L49, L835 | `tests/unit/server.test.ts` |
-| REQ-LIFE-002 | `src/server.ts` L831–L833, L835 | `tests/unit/server.test.ts` |
+| REQ-LIFE-001 | `src/server.ts` L49–L50, L1188–L1189, L1200 | `tests/unit/server.test.ts` |
+| REQ-LIFE-002 | `src/server.ts` L1196–L1198, L1200 | `tests/unit/server.test.ts` |
 | REQ-LIFE-003 | `build.ts` L1–L61 | `tests/unit/build.test.ts` |
 | REQ-LIFE-004 | `src/client.ts` L1–L2 | — (offen) |
 | REQ-NF-001 | `tsconfig.json`, `src/server.ts` | — (offen) |
@@ -286,43 +297,50 @@
 | REQ-DBG-005 | `src/server.ts` (diverse Command-Handler) | — (offen) |
 | REQ-DBG-006 | `src/server.ts` L425–L429 | — (offen) |
 | REQ-DBG-007 | `src/server.ts` L208 | — (offen) |
-| REQ-DBG-008 | `src/server.ts` (hero-diagnose Command) | — (offen) |
+| REQ-DBG-008 | `src/server.ts` L803–L1166 | — (offen) |
 
 ---
 
 ## Lückenanalyse
 
 ### Tests fehlen für:
-- **REQ-CORE-002 bis REQ-CORE-009** — Kernszenarios (No-Mapping, Datei-Check, Streaming, Channel-Tracking, Cleanup, Concurrent Playback, On-Demand Playback) sind nicht unit-getestet.
+- **REQ-CORE-002, REQ-CORE-003** — No-Mapping-Szenario und Datei-Existenz-Check nicht unit-getestet.
+- **REQ-CORE-005** — Voice-Channel-Tracking (Add/Remove) nicht getestet.
+- **REQ-CORE-006** — Verhalten bei 0 aktiven Channels nicht getestet.
+- **REQ-CORE-009** — On-Demand Playback-Lifecycle nicht als eigenständiger Test.
+- **REQ-CORE-010** — Intro-Delay vor Wiedergabe nicht getestet.
+- **REQ-CORE-011** — Session-Cleanup bei Channel-Schließung nicht getestet.
 - **REQ-CMD-001 bis REQ-CMD-003** — Enable/Disable/Stop-Commands nicht getestet.
-- **REQ-CMD-010, REQ-CMD-013** — Dump-Context und Play-Song Commands nicht getestet.
-- **REQ-CFG-002, REQ-CFG-003, REQ-CFG-004, REQ-CFG-005** — Settings `oncePerDay`, UI-Aktivierung, `debug` und `volume` nicht getestet.
-- **REQ-DATA-001, REQ-DATA-002, REQ-DATA-004, REQ-DATA-007** — JSON-Persistenz (Pfade, Daily-Greets, Fallback, User-Cache) nicht getestet.
+- **REQ-CMD-010** — Dump-Context Command nicht getestet.
+- **REQ-CMD-013** — Play-Song Command nicht getestet.
+- **REQ-CMD-014** — Diagnose Command nicht getestet.
+- **REQ-CFG-002, REQ-CFG-003, REQ-CFG-004** — Settings `oncePerDay`, UI-Aktivierung und `debug` nicht getestet.
+- **REQ-DATA-001, REQ-DATA-002, REQ-DATA-004, REQ-DATA-007** — JSON-Persistenz (MusicMap-Pfad, Daily-Greets, Fallback, User-Cache) nicht getestet.
 - **REQ-DATA-006** — Docker-Testdateien-Mount nicht getestet.
-- **REQ-DBG-002 bis REQ-DBG-007** — Detailliertes Debug-Logging nicht getestet.
+- **REQ-DBG-002 bis REQ-DBG-008** — Detailliertes Debug-Logging und Diagnose nicht getestet.
 - **REQ-LIFE-004** — Leerer Client-Entry-Point nicht getestet.
-- **REQ-NF-001 bis REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
+- **REQ-NF-001, REQ-NF-002, REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
 
 ### Bereits getestet:
 - **REQ-CORE-001** — Auto-Play bei Join (`tests/unit/server.test.ts`)
 - **REQ-CORE-004** — Transport-Config, Producer-RTP-Parameter, SSRC-Konsistenz, ffmpeg-Args, Stream-Registration (`tests/unit/play-audio.test.ts`, `tests/unit/play-audio-comparison.test.ts`)
 - **REQ-CORE-007** — Cleanup nach ffmpeg-Exit (`tests/unit/play-audio.test.ts`)
 - **REQ-CORE-008** — Concurrent Playback Protection (`tests/unit/play-audio.test.ts`)
+- **REQ-CFG-001** — Enabled-Setting (`tests/unit/server.test.ts`)
 - **REQ-CFG-005** — Volume-Setting in ffmpeg-Args (`tests/unit/play-audio.test.ts`)
 - **REQ-CMD-004 bis REQ-CMD-007** — Set, Remove, List, Files Commands (`tests/unit/server.test.ts`)
 - **REQ-CMD-009** — Set-Me Command (`tests/unit/server.test.ts`)
 - **REQ-CMD-011** — Play-Me Command (`tests/unit/server.test.ts`)
 - **REQ-CMD-012** — Play Command (`tests/unit/server.test.ts`)
-- **REQ-CFG-001** — Enabled-Setting (`tests/unit/server.test.ts`)
 - **REQ-DATA-003, REQ-DATA-005** — Verzeichnis-Erstellung (`tests/unit/server.test.ts`)
 - **REQ-LIFE-001, REQ-LIFE-002** — onLoad/onUnload (`tests/unit/server.test.ts`)
 - **REQ-LIFE-003, REQ-NF-003** — Build-Prozess (`tests/unit/build.test.ts`)
 - **REQ-DBG-001** — Debug-Logging ein/aus (`tests/unit/server.test.ts`)
 
 ### Empfehlung:
-1. **Höchste Priorität:** Unit-Tests für REQ-CORE-002, REQ-CORE-003, REQ-CFG-002.
-2. **Hohe Priorität:** Tests für REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop), REQ-CFG-005 (Volume).
-3. **Mittlere Priorität:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004), REQ-CORE-009 (On-Demand Cleanup).
+1. **Hoechste Prioritaet:** Unit-Tests fuer REQ-CORE-002, REQ-CORE-003, REQ-CFG-002.
+2. **Hohe Prioritaet:** Tests fuer REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop), REQ-CORE-011 (Channel-Cleanup).
+3. **Mittlere Prioritaet:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004), REQ-CORE-010 (Delay), REQ-CMD-013 (Play-Song).
 
 ---
 
@@ -341,3 +359,4 @@
 | 2026-03-15 | Flexible Dateinamen-Suche: REQ-CMD-004 (`/hero-set`) und REQ-CMD-009 (`/hero-set-me`) akzeptieren jetzt Dateinamen mit oder ohne Endung (case-insensitive, Duplikat-Erkennung). Gemeinsame `resolveAudioFile`-Hilfsfunktion extrahiert und in allen 3 betroffenen Commands verwendet. Abnahmekriterien aktualisiert. | Developer |
 | 2026-03-15 | REQ-CFG-005 (Volume-Setting) hinzugefügt. REQ-CORE-009 (On-Demand Playback ohne persistenten Bot) hinzugefügt. REQ-CORE-004 aktualisiert (Bun.spawn, Referenz-Plugin-Angleichung, bekannter Audio-Bug dokumentiert). Alle Traceability-Zeilennummern aktualisiert. Sektion "Bekannte Bugs" (BUG-001) hinzugefügt. Lückenanalyse erweitert um REQ-CORE-009 und REQ-CFG-005. | Requirements Engineer |
 | 2026-03-15 | REQ-DBG-008 (`/hero-diagnose`) hinzugefügt: Pipeline-Diagnose-Command mit 6 Stages (Pre-flight, Transport, Producer, ffmpeg, Stream+Consumer-Discovery, Router-Dump). Unit-Tests fuer playAudio-Pipeline (8 Tests) und Referenz-Paritaetstests (4 Tests) erstellt. Mock-Infrastruktur erweitert (Producer, Consumer, Router, Bun.spawn). | Developer |
+| 2026-03-17 | **Vollstaendige Requirements-Analyse** gegen aktuellen Codestand (server.ts 1201 Zeilen). Neue REQs: REQ-CORE-010 (Intro-Delay), REQ-CORE-011 (Channel-Close Session-Cleanup), REQ-CMD-014 (`/hero-diagnose` als Command-REQ). Korrekturen: REQ-CORE-001 um Delay und Channel-Auswahl praezisiert, REQ-CORE-006 von "Fehler geloggt" auf "Debug-Log" korrigiert, REQ-CMD-010 Beschreibung an tatsaechliche Implementierung angepasst (alle Parameter statt nur invokerCtx), REQ-DBG-008 auf 7 Stages (0-6) aktualisiert. Alle Traceability-Zeilennummern gegen server.ts abgeglichen und aktualisiert (REQ-LIFE-001/002, REQ-CFG-003, REQ-CMD-010, REQ-DBG-008). Traceability-Matrix: REQ-CORE-004/007/008/CFG-005 Test-Abdeckung nachgetragen (play-audio.test.ts, play-audio-comparison.test.ts). Lueckenanalyse vollstaendig ueberarbeitet. | Requirements Engineer |

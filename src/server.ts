@@ -205,7 +205,7 @@ const onLoad = async (ctx: PluginContext) => {
     mp3Path: string,
   ): Promise<void> {
     const procKey = `${channelId}-${userId}`;
-    debugLog(`playAudio: channelId=${channelId}, userId=${userId}, label="${label}", path="${mp3Path}"`);
+    debugLog(`playAudio: channelId=${channelId}, userId=${userId}, label="${label}", path="${mp3Path}", activeSessions=${activeSessions.size}, activeChannels=[${[...activeChannels].join(", ")}]`);
 
     // Stop any existing playback for this user in this channel
     const existing = activeSessions.get(procKey);
@@ -474,7 +474,7 @@ const onLoad = async (ctx: PluginContext) => {
 
     const channelId = [...activeChannels][0];
     if (channelId === undefined) {
-      debugLog(`No active voice channel – cannot play intro for "${username}"`);
+      ctx.error(`No active voice channel – cannot play intro for "${username}"`);
       return;
     }
 
@@ -499,7 +499,8 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-enable",
     description: "Enable the Hero Introducer plugin.",
     args: [],
-    async executes(_invokerCtx: TInvokerContext) {
+    async executes(invokerCtx: TInvokerContext) {
+      debugLog(`/hero-enable called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       settings.set("enabled", true);
       return "Hero Introducer enabled.";
     },
@@ -510,7 +511,8 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-disable",
     description: "Disable the Hero Introducer plugin.",
     args: [],
-    async executes(_invokerCtx: TInvokerContext) {
+    async executes(invokerCtx: TInvokerContext) {
+      debugLog(`/hero-disable called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       settings.set("enabled", false);
       return "Hero Introducer disabled.";
     },
@@ -521,7 +523,8 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-stop",
     description: "Stop the currently playing intro music.",
     args: [],
-    async executes(_invokerCtx: TInvokerContext) {
+    async executes(invokerCtx: TInvokerContext) {
+      debugLog(`/hero-stop called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       if (activeSessions.size === 0) {
         return "No intro is currently playing.";
       }
@@ -606,7 +609,8 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-list",
     description: "List all configured DisplayName → audio file mappings.",
     args: [],
-    async executes(_invokerCtx: TInvokerContext) {
+    async executes(invokerCtx: TInvokerContext) {
+      debugLog(`/hero-list called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
       const entries = Object.entries(musicMap);
       if (entries.length === 0) {
@@ -622,7 +626,8 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-files",
     description: "List all available audio files (.mp3, .mpeg) in the music directory.",
     args: [],
-    async executes(_invokerCtx: TInvokerContext) {
+    async executes(invokerCtx: TInvokerContext) {
+      debugLog(`/hero-files called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       let files: string[];
       try {
         const dirEntries = await fs.readdir(musicDir);
@@ -808,6 +813,7 @@ const onLoad = async (ctx: PluginContext) => {
     async executes(invokerCtx: TInvokerContext) {
       const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      debugLog(`/hero-diagnose called by userId=${invokerUserId}, voiceChannelId=${voiceChannelId}`);
       const lines: string[] = ["=== HERO-INTRODUCER DIAGNOSTIC REPORT ===", ""];
 
       function pass(stage: string, detail: string) { lines.push(`[PASS] ${stage}: ${detail}`); }
@@ -830,14 +836,55 @@ const onLoad = async (ctx: PluginContext) => {
       if (ffmpegOk) pass("Stage 0", "ffmpeg found"); else fail("Stage 0", "ffmpeg NOT found");
       info("Stage 0", `Active channels: [${[...activeChannels].join(", ")}]`);
 
+      // Diagnostic-local type interfaces for mediasoup objects (avoids `any`)
+      interface DiagTransport {
+        id: string;
+        tuple: { localPort: number };
+        produce(params: unknown): Promise<DiagProducer>;
+        consume(params: unknown): Promise<unknown>;
+        close(): void;
+        dump(): Promise<Record<string, unknown>>;
+        getStats?(): Promise<unknown>;
+        consumers?: Map<string, DiagConsumerLike>;
+      }
+      interface DiagProducer {
+        id: string;
+        paused: boolean;
+        close(): void;
+        getStats(): Promise<Array<{ packetCount: number; byteCount: number; score: number }>>;
+        observer?: { on(event: string, handler: (consumer: DiagConsumerLike) => void): void };
+      }
+      interface DiagConsumerLike {
+        id: string;
+        paused: boolean;
+        kind?: string;
+        type?: string;
+        producerPaused?: boolean;
+        score?: unknown;
+        getStats(): Promise<unknown>;
+      }
+      interface DiagRouter {
+        createPlainTransport(params: unknown): Promise<DiagTransport>;
+        dump(): Promise<{
+          transportIds?: string[];
+          mapProducerIdConsumerIds?: Array<{ key: string; values: string[] }>;
+        }>;
+        rtpCapabilities: unknown;
+        transportsForTesting?: Map<string, DiagTransport>;
+      }
+      interface DiagListenInfo {
+        ip: string;
+        announcedAddress: string;
+      }
+
       // --- Stage 1: Transport ---
-      let router: any;
-      let listenInfo: any;
-      let transport: any;
+      let router: DiagRouter;
+      let listenInfo: DiagListenInfo;
+      let transport: DiagTransport;
       let rtpPort: number;
       try {
-        router = ctx.actions.voice.getRouter(voiceChannelId);
-        listenInfo = await ctx.actions.voice.getListenInfo();
+        router = ctx.actions.voice.getRouter(voiceChannelId) as unknown as DiagRouter;
+        listenInfo = await ctx.actions.voice.getListenInfo() as unknown as DiagListenInfo;
         transport = await router.createPlainTransport({
           listenIp: { ip: listenInfo.ip, announcedIp: listenInfo.announcedAddress },
           rtcpMux: true,
@@ -853,7 +900,7 @@ const onLoad = async (ctx: PluginContext) => {
 
       // --- Stage 2: Producer ---
       const ssrc = Math.floor(Math.random() * 1e9);
-      let producer: any;
+      let producer: DiagProducer;
       try {
         producer = await transport.produce({
           kind: "audio",
@@ -1179,6 +1226,7 @@ const onLoad = async (ctx: PluginContext) => {
       },
     ],
     async executes(...params: unknown[]) {
+      debugLog(`/hero-dump-context called`);
       const dump = params.map((p, i) => `param[${i}]: ${JSON.stringify(p, null, 2)}`).join("\n\n");
       ctx.log(`[DEBUG] Command params (${params.length} total):\n${dump}`);
       return `Context dump:\n\`\`\`json\n${dump}\n\`\`\``;

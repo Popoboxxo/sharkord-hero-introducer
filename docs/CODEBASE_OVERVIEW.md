@@ -1,6 +1,6 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 15. Maerz 2026
+> **Stand:** 17. Maerz 2026
 > **Version:** 0.1.0
 
 ---
@@ -9,9 +9,9 @@
 
 | Datei | Zeilen | Rolle |
 |-------|--------|-------|
-| `src/server.ts` | ~836 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback |
+| `src/server.ts` | ~1201 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Diagnose |
 | `src/client.ts` | 2 | Leerer Client-Entry-Point (kein UI) |
-| `build.ts` | ~63 | Bun Build-Script (Server + Client + package.json kopieren) |
+| `build.ts` | ~62 | Bun Build-Script (Server + Client + package.json kopieren) |
 
 ---
 
@@ -24,7 +24,7 @@
 | `MusicMap` | `Record<string, string>` — displayName -> audioFileName (.mp3 oder .mpeg) | REQ-DATA-001 |
 | `DailyGreets` | `Record<string, string>` — userId -> ISO-Datum `"YYYY-MM-DD"` | REQ-DATA-002 |
 | `ResolveResult` | `{ ok: true; fileName: string } \| { ok: false; message: string }` — Ergebnis der flexiblen Dateinamen-Aufloesung | REQ-CMD-004, REQ-CMD-009, REQ-CMD-013 |
-| `PlaybackSession` | `{ ffmpeg: { kill(signal?: number): void }; cleanup: () => void }` — Laufende Playback-Session | REQ-CORE-004, REQ-CORE-008 |
+| `PlaybackSession` | `{ ffmpeg: { kill(signal?: number): void }; cleanup: () => void }` — Laufende Playback-Session (Interface, in onLoad-Closure definiert) | REQ-CORE-004, REQ-CORE-008 |
 
 ### Konstanten
 
@@ -58,7 +58,7 @@
 | `enabled` | `boolean` | `true` | Plugin ein/aus | REQ-CFG-001 |
 | `oncePerDay` | `boolean` | `true` | Pro User max. einmal pro Kalendertag begruessen | REQ-CFG-002 |
 | `debug` | `boolean` | `false` | Detailliertes Debug-Logging aktivieren | REQ-CFG-004 |
-| `volume` | `number` | `25` | Playback-Lautstaerke (0-100%), angewendet via ffmpeg `-af volume=0.XX` | **Keine REQ-ID** (fehlt in REQUIREMENTS.md) |
+| `volume` | `number` | `25` | Playback-Lautstaerke (0-100%), angewendet via ffmpeg `-af volume=0.XX` | REQ-CFG-005 |
 
 #### Interne Hilfsfunktionen (in onLoad-Closure)
 
@@ -109,9 +109,10 @@
 | `/hero-play-me` | -- | Spielt das eigene Intro des aufrufenden Users ab. Nutzt `invokerCtx.userId` -> `userNameCache` -> MusicMap-Lookup. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-011 |
 | `/hero-play` | `displayName: string` | Spielt das Intro einer anderen Person ab. MusicMap-Lookup ueber `displayName`. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-012 |
 | `/hero-play-song` | `songName: string` | Spielt eine beliebige Audio-Datei aus dem music-Verzeichnis. Nutzt `resolveAudioFile()` fuer flexible Aufloesung. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-013 |
+| `/hero-diagnose` | -- | Fuehrt vollstaendige Audio-Pipeline-Diagnose durch (7 Stages, PASS/FAIL Report). Nutzt `invokerCtx.currentVoiceChannelId`. | REQ-DBG-008 |
 | `/hero-dump-context` | `testArg?: string` | Dumpt alle Command-Parameter als JSON ins Server-Log und zeigt sie dem Aufrufer | REQ-CMD-010 |
 
-Abschliessend: `ctx.ui.enable()` (REQ-CFG-003).
+Abschliessend: `ctx.ui.enable()` (REQ-CFG-003), `ctx.log("Hero Introducer ready")`.
 
 **Hinweis:** `/hero-debug` existiert nicht mehr. Der Debug-Modus wird ausschliesslich ueber die Settings-UI gesteuert (REQ-CFG-004).
 
@@ -126,7 +127,7 @@ async function playAudio(
 ): Promise<void>
 ```
 
-**REQ:** REQ-CORE-004, REQ-CORE-006, REQ-CORE-007, REQ-CORE-008, REQ-DBG-003
+**REQ:** REQ-CORE-004, REQ-CORE-006, REQ-CORE-007, REQ-CORE-008, REQ-CORE-009, REQ-DBG-003
 
 **Architektur:** On-demand Playback. Bot joint nicht dauerhaft -- erstellt alles pro Playback, raeumt danach vollstaendig auf.
 
@@ -151,7 +152,29 @@ async function playAudio(
 15. ffmpeg stderr async auslesen und zeilenweise via `debugLog()` loggen
 16. `ffmpeg.exited.then(code => ...)`: Log-Eintrag, `activeSessions.delete(procKey)`, `cleanup()`
 
-### onUnload (L831-L833)
+### /hero-diagnose (interne Funktion, L803-L1166)
+
+**REQ:** REQ-DBG-008
+
+Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erstellt temporaere Ressourcen (Transport, Producer, ffmpeg, Stream) und inspiziert die gesamte Pipeline.
+
+**7 Stages:**
+
+| Stage | Name | Beschreibung |
+|-------|------|-------------|
+| 0 | Pre-flight | `currentVoiceChannelId`-Check, ffmpeg-Verfuegbarkeit (`Bun.spawn(["ffmpeg", "-version"])`), aktive Channels auflisten |
+| 1 | Transport | `getRouter()`, `getListenInfo()`, `createPlainTransport()` erstellen. Bei Fehler: sofortiger Abbruch mit FAIL. |
+| 2 | Producer | `transport.produce()` mit Opus-Codec (48kHz, stereo, PT 111, zufaelliger SSRC). Prueft `producer.paused`. |
+| 3 | ffmpeg | Test-Audio-Datei oder Stille-Generator (`anullsrc`), 2s warten, Producer-Stats pruefen (packetCount > 0?). |
+| 4 | Stream + Consumer Discovery | `ctx.actions.voice.createStream()`, `producer.observer.on("newconsumer", ...)` Hook, 5s warten auf SDK-Consumer. Prueft Consumer-`paused`-Status. |
+| 5 | Router State Dump | `router.dump()`, Consumer-Zaehlung, `router.transportsForTesting` Inspektion, Consumer-Status (paused/resumed), Consumer-Stats und Score. |
+| 6 | Client Transport Deep Inspection | ICE-State (`completed`?), DTLS-State (`connected`?), `iceSelectedTuple`, Consumer outbound-rtp Stats (packetCount > 0?), vollstaendiger Transport-Dump. |
+
+**Cleanup:** ffmpeg.kill(), producer.close(), transport.close() nach allen Stages.
+
+**Verdict:** Zaehlt alle `[FAIL]`-Eintraege. Bei 0 Failures: "All stages passed". Bei Failures: Liste der Fehler.
+
+### onUnload (L1196-L1198)
 
 Loggt `"Hero Introducer unloaded"`.
 
@@ -231,7 +254,7 @@ user:joined(userId, username)
   +- oncePerDay? -> DailyGreets speichern
 ```
 
-### Flow 2: playAudio -> On-demand Streaming (NEU)
+### Flow 2: playAudio -> On-demand Streaming
 
 ```
 playAudio(channelId, userId, label, mp3Path)
@@ -262,7 +285,7 @@ playAudio(channelId, userId, label, mp3Path)
   +- ffmpeg.exited -> Log + activeSessions.delete + cleanup()
 ```
 
-### Flow 3: /hero-set -> Mapping speichern (AKTUALISIERT)
+### Flow 3: /hero-set -> Mapping speichern
 
 ```
 /hero-set <displayName> <audioFileName>
@@ -315,7 +338,7 @@ playAudio(channelId, userId, label, mp3Path)
   +- playAudio(voiceChannelId, invokerUserId ?? 0, displayName, audioPath)
 ```
 
-### Flow 6: /hero-play-song -> Song abspielen (NEU)
+### Flow 6: /hero-play-song -> Song abspielen
 
 ```
 /hero-play-song <songName>
@@ -331,7 +354,52 @@ playAudio(channelId, userId, label, mp3Path)
   +- playAudio(voiceChannelId, invokerUserId ?? 0, resolved.fileName, audioPath)
 ```
 
-### Flow 7: Build
+### Flow 7: /hero-diagnose -> Pipeline-Diagnose
+
+```
+/hero-diagnose
+  |
+  +- Stage 0: Pre-flight
+  |   +- voiceChannelId vorhanden? -> sonst FAIL, Abbruch
+  |   +- ffmpeg verfuegbar? (Bun.spawn ["ffmpeg", "-version"])
+  |   +- activeChannels auflisten
+  |
+  +- Stage 1: Transport
+  |   +- getRouter(voiceChannelId)
+  |   +- getListenInfo()
+  |   +- createPlainTransport() -> PASS/FAIL
+  |
+  +- Stage 2: Producer
+  |   +- transport.produce(Opus, 48kHz, stereo)
+  |   +- producer.paused Check
+  |
+  +- Stage 3: ffmpeg
+  |   +- Test-Audiodatei oder anullsrc als Input
+  |   +- Bun.spawn(ffmpeg ...) -> 2s warten
+  |   +- producer.getStats() -> packetCount > 0?
+  |
+  +- Stage 4: Stream + Consumer Discovery
+  |   +- producer.observer.on("newconsumer") Hook
+  |   +- createStream() -> 5s warten
+  |   +- SDK-Consumer gefunden? Paused-Status pruefen
+  |
+  +- Stage 5: Router State Dump
+  |   +- router.dump() -> Consumer-Zaehlung
+  |   +- router.transportsForTesting -> Consumer-Inspektion
+  |   +- Consumer paused/resumed, Stats, Score
+  |
+  +- Stage 6: Client Transport Deep Inspection
+  |   +- ICE State (completed?)
+  |   +- DTLS State (connected?)
+  |   +- Consumer outbound-rtp Stats
+  |   +- Vollstaendiger Transport-Dump
+  |
+  +- Cleanup: ffmpeg.kill(), producer.close(), transport.close()
+  |
+  +- Verdict: FAIL-Zaehlung, Zusammenfassung
+```
+
+### Flow 8: Build
 
 ```
 bun build.ts
@@ -371,49 +439,73 @@ bun build.ts
 
 | Problem | Beschreibung | Status |
 |---------|-------------|--------|
-| Audio nicht hoerbar | Die Server-seitige Audio-Pipeline funktioniert technisch (Producer Score 10, Consumer existiert, ffmpeg sendet RTP-Pakete), aber der Audio-Output ist fuer Clients im Voice-Channel nicht hoerbar. | Wird untersucht |
+| Audio nicht hoerbar | Die Server-seitige Audio-Pipeline funktioniert technisch (Producer Score 10, Consumer existiert, ffmpeg sendet RTP-Pakete), aber der Audio-Output ist fuer Clients im Voice-Channel nicht hoerbar. `/hero-diagnose` wurde zur Diagnose implementiert. | Wird untersucht |
 
 ---
 
 ## Test-Abdeckung
 
+**Gesamt: 74 Tests in 5 Dateien**
+
 | Test-Datei | Anzahl Tests | Themen |
 |------------|-------------|--------|
-| `tests/unit/server.test.ts` | 18 | Commands, Data-Persistenz, Lifecycle, MPEG-Datei-Akzeptanz |
+| `tests/unit/server.test.ts` | 29 | Lifecycle-Exports, MockPluginContext, Commands (/hero-set, /hero-remove, /hero-list, /hero-files, /hero-set-me, /hero-play-me, /hero-play), user:joined-Handler (Username-Lookup), Debug-Logging ein/aus, MPEG-Akzeptanz, Data-Persistenz |
+| `tests/unit/missing-coverage.test.ts` | 29 | REQ-CORE-002 (kein Mapping), REQ-CORE-003 (Datei-Existenz), REQ-CORE-005 (Channel-Tracking), REQ-CORE-006 (kein aktiver Channel), REQ-CMD-001/002/003 (Enable/Disable/Stop), REQ-CMD-010 (Dump-Context), REQ-CMD-013 (Play-Song mit/ohne Endung, Duplikate, Fehler), REQ-CFG-001 (disabled), REQ-CFG-002 (oncePerDay), REQ-CFG-003 (UI-Aktivierung), REQ-CFG-004 (Debug-Setting-Registrierung), REQ-DATA-001/002/004/007 (Persistenz, Fallback, User-Cache), flexible Dateinamen-Aufloesung fuer /hero-set und /hero-set-me |
+| `tests/unit/play-audio.test.ts` | 8 | playAudio-Pipeline: Transport-Config, Producer-RTP, SSRC-Konsistenz, ffmpeg-Args, Volume, Stream-Registration, Cleanup, Concurrent-Playback |
+| `tests/unit/play-audio-comparison.test.ts` | 4 | Referenz-Paritaetstests: Transport-, Codec-, ffmpeg-, createStream-Konfiguration vs. sharkord-music-bot |
 | `tests/unit/build.test.ts` | 4 | Build-Output, Externals |
-| `tests/helpers/mock-plugin-context.ts` | -- | PluginContext Mock-Factory |
+| `tests/helpers/mock-plugin-context.ts` | -- | PluginContext Mock-Factory (MockSettings, MockProducer, MockConsumer, MockPlainTransport, MockRouter, MockStream, MockCaptures) |
 
 ---
 
 ## Lueckenanalyse
 
 ### Tests fehlen fuer:
-- **REQ-CORE-002 bis REQ-CORE-008** — Kernszenarios (No-Mapping, Datei-Check, Streaming, Channel-Tracking, Cleanup, Concurrent Playback) sind nicht unit-getestet.
-- **REQ-CMD-001 bis REQ-CMD-003** — Enable/Disable/Stop-Commands nicht getestet.
-- **REQ-CMD-010, REQ-CMD-013** — Dump-Context und Play-Song Commands nicht getestet.
-- **REQ-CFG-002, REQ-CFG-003, REQ-CFG-004** — Settings `oncePerDay`, UI-Aktivierung und `debug` nicht getestet.
-- **REQ-DATA-001, REQ-DATA-002, REQ-DATA-004, REQ-DATA-007** — JSON-Persistenz (Pfade, Daily-Greets, Fallback, User-Cache) nicht getestet.
+- **REQ-CORE-009** — On-demand Playback (keine persistente Bot-Praesenz) nicht dediziert getestet.
+- **REQ-CORE-010** — Intro-Delay (INTRO_DELAY_MS) vor Wiedergabe nicht explizit getestet.
+- **REQ-CORE-011** — Session-Cleanup bei Voice-Channel-Schliessung nicht getestet.
+- **REQ-CMD-014** — /hero-diagnose Command nicht getestet.
 - **REQ-DATA-006** — Docker-Testdateien-Mount nicht getestet.
-- **REQ-DBG-002 bis REQ-DBG-007** — Detailliertes Debug-Logging nicht getestet.
+- **REQ-DBG-002 bis REQ-DBG-008** — Detailliertes Debug-Logging und Diagnose-Command nicht als eigenstaendige Tests (Debug-Logging nur indirekt ueber user:joined getestet).
 - **REQ-LIFE-004** — Leerer Client-Entry-Point nicht getestet.
-- **REQ-NF-001 bis REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
+- **REQ-NF-001, REQ-NF-002, REQ-NF-004** — Nichtfunktionale Anforderungen nicht getestet.
 
 ### Bereits getestet:
 - **REQ-CORE-001** — Auto-Play bei Join (`tests/unit/server.test.ts`)
-- **REQ-CMD-004 bis REQ-CMD-007** — Set, Remove, List, Files Commands (`tests/unit/server.test.ts`)
-- **REQ-CMD-009** — Set-Me Command (`tests/unit/server.test.ts`)
+- **REQ-CORE-002** — Kein Playback ohne Mapping (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CORE-003** — Datei-Existenz-Check vor Playback (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CORE-004** — Transport-Config, Producer-RTP-Parameter, SSRC-Konsistenz, ffmpeg-Args, Stream-Registration (`tests/unit/play-audio.test.ts`, `tests/unit/play-audio-comparison.test.ts`)
+- **REQ-CORE-005** — Channel-Tracking via voice:runtime_initialized/closed (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CORE-006** — Kein aktiver Channel -> kein Playback (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CORE-007** — Cleanup nach ffmpeg-Exit (`tests/unit/play-audio.test.ts`)
+- **REQ-CORE-008** — Concurrent Playback Protection (`tests/unit/play-audio.test.ts`)
+- **REQ-CFG-001** — Enabled-Setting, disabled-Verhalten (`tests/unit/server.test.ts`, `tests/unit/missing-coverage.test.ts`)
+- **REQ-CFG-002** — oncePerDay-Setting: bereits begruesst und oncePerDay=false (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CFG-003** — Settings-UI via ctx.ui.enable() (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CFG-004** — Debug-Setting-Registrierung (boolean, default false) (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CFG-005** — Volume-Setting in ffmpeg-Args (`tests/unit/play-audio.test.ts`)
+- **REQ-CMD-001** — /hero-enable (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CMD-002** — /hero-disable (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CMD-003** — /hero-stop (`tests/unit/missing-coverage.test.ts`)
+- **REQ-CMD-004 bis REQ-CMD-007** — Set, Remove, List, Files Commands inkl. flexibler Dateinamen-Aufloesung (`tests/unit/server.test.ts`, `tests/unit/missing-coverage.test.ts`)
+- **REQ-CMD-009** — Set-Me Command inkl. flexibler Aufloesung (`tests/unit/server.test.ts`, `tests/unit/missing-coverage.test.ts`)
+- **REQ-CMD-010** — Dump-Context Command (`tests/unit/missing-coverage.test.ts`)
 - **REQ-CMD-011** — Play-Me Command (`tests/unit/server.test.ts`)
 - **REQ-CMD-012** — Play Command (`tests/unit/server.test.ts`)
-- **REQ-CFG-001** — Enabled-Setting (`tests/unit/server.test.ts`)
+- **REQ-CMD-013** — Play-Song Command (mit/ohne Endung, Duplikate, Fehler, kein Voice-Channel) (`tests/unit/missing-coverage.test.ts`)
+- **REQ-DATA-001** — MusicMap-Persistenz (`tests/unit/missing-coverage.test.ts`)
+- **REQ-DATA-002** — Daily-Greets-Persistenz (`tests/unit/missing-coverage.test.ts`)
 - **REQ-DATA-003, REQ-DATA-005** — Verzeichnis-Erstellung (`tests/unit/server.test.ts`)
+- **REQ-DATA-004** — JSON-Fallback bei fehlender Datei (`tests/unit/missing-coverage.test.ts`)
+- **REQ-DATA-007** — User-Cache Persistenz, Laden, Fallback (`tests/unit/missing-coverage.test.ts`)
 - **REQ-LIFE-001, REQ-LIFE-002** — onLoad/onUnload (`tests/unit/server.test.ts`)
 - **REQ-LIFE-003, REQ-NF-003** — Build-Prozess (`tests/unit/build.test.ts`)
 - **REQ-DBG-001** — Debug-Logging ein/aus (`tests/unit/server.test.ts`)
 
 ### Empfehlung:
-1. **Hoechste Prioritaet:** Unit-Tests fuer REQ-CORE-002, REQ-CORE-003, REQ-CFG-002.
-2. **Hohe Prioritaet:** Tests fuer REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop).
-3. **Mittlere Prioritaet:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004).
+1. **Hoechste Prioritaet:** Unit-Tests fuer REQ-CORE-011 (Channel-Close Session-Cleanup).
+2. **Hohe Prioritaet:** REQ-CMD-014 (/hero-diagnose), REQ-CORE-010 (Intro-Delay).
+3. **Mittlere Prioritaet:** REQ-CORE-009 (On-Demand Lifecycle), REQ-DBG-002 bis REQ-DBG-008 (detailliertes Debug-Logging).
 
 ---
 
@@ -424,3 +516,5 @@ bun build.ts
 | 2026-03-11 | Initiale Erfassung aller src/ Dateien |
 | 2026-03-13 | Debug-Features, Play-Commands, erweitertes Logging dokumentiert |
 | 2026-03-15 | Vollstaendige Aktualisierung: playAudio-Architektur (on-demand, Bun.spawn, activeSessions statt activeProcesses), resolveAudioFile-Funktion, volume-Setting, /hero-play-song Command, /hero-debug entfernt, Flows aktualisiert, bekannter Audio-Bug dokumentiert |
+| 2026-03-17 | Vollstaendige Aktualisierung: /hero-diagnose Command (7 Stages) hinzugefuegt, Zeilennummern aktualisiert (~1201 Zeilen), Test-Abdeckung erweitert (play-audio.test.ts: 8 Tests, play-audio-comparison.test.ts: 4 Tests), Lueckenanalyse aktualisiert, REQ-CFG-005 korrekt zugeordnet, Flow 7 (Diagnose) und Flow 8 (Build) hinzugefuegt |
+| 2026-03-17 | Test-Abdeckung aktualisiert: missing-coverage.test.ts (29 Tests) und server.test.ts (29 Tests, vorher faelschlich als 18 dokumentiert) aufgenommen. Gesamtzahl: 74 Tests in 5 Dateien. Lueckenanalyse vollstaendig ueberarbeitet — viele REQ-IDs jetzt durch missing-coverage.test.ts abgedeckt (REQ-CORE-002/003/005/006, REQ-CMD-001/002/003/010/013, REQ-CFG-001/002/003/004, REQ-DATA-001/002/004/007). |
