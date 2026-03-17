@@ -1,6 +1,6 @@
 # Architektur — sharkord-hero-introducer
 
-> **Stand:** 17. Maerz 2026
+> **Stand:** 18. Maerz 2026
 > **Version:** 0.1.0
 
 ---
@@ -134,6 +134,7 @@ activeSessions: Map<string, PlaybackSession>
   - Key: "channelId-userId"
   - Value: { ffmpeg, cleanup }
   - Lifecycle: Erstellt bei playAudio(), geloescht bei ffmpeg-Exit oder /hero-stop
+  - cleanup(): stream.remove(), producer.close(), transport.close()
 
 activeChannels: Set<number>
   - Befuellt durch voice:runtime_initialized
@@ -185,6 +186,7 @@ dist/sharkord-hero-introducer/
 | Flexible Dateinamen-Aufloesung | Benutzerkomfort: Eingabe mit/ohne Endung, case-insensitive, Duplikat-Warnung. |
 | Server-seitige Volume-Kontrolle via ffmpeg | Einfacher als Client-seitige Anpassung, sofort wirksam fuer alle Listener. |
 | `/hero-diagnose` mit 7 Stages | Systematische Fehlersuche fuer BUG-001 (Audio nicht hoerbar). Jede Stage ist isoliert testbar. |
+| Diagnostic-Interfaces statt `any` | Lokale Interfaces (`DiagConsumerLike`, `DiagProducer`, `DiagTransport`, `DiagRouter`) im hero-diagnose Command fuer Typsicherheit bei mediasoup-Runtime-Introspektion. |
 
 ---
 
@@ -193,3 +195,4 @@ dist/sharkord-hero-introducer/
 | Datum | Aenderung |
 |-------|----------|
 | 2026-03-17 | Initiale Erstellung basierend auf IST-Zustand des Codes |
+| 2026-03-18 | cleanup() um stream.remove() erweitert, Diagnostic-Interfaces dokumentiert |

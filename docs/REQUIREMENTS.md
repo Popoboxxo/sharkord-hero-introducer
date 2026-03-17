@@ -76,7 +76,7 @@
 |--------|-----------------|
 | REQ-CMD-001 | Ausführung → Setting `enabled` ist `true`, Rückmeldung enthält Bestätigung. |
 | REQ-CMD-002 | Ausführung → Setting `enabled` ist `false`, Rückmeldung enthält Bestätigung. |
-| REQ-CMD-003 | Bei laufenden Intros: alle ffmpeg-Prozesse beendet, `activeProcesses`-Map leer. Ohne laufende Intros: Info-Meldung. |
+| REQ-CMD-003 | Bei laufenden Intros: alle ffmpeg-Prozesse beendet, `activeSessions`-Map leer. Ohne laufende Intros: Info-Meldung. |
 | REQ-CMD-004-A | Eingabe ohne Endung + genau eine passende Datei → Mapping mit aufgelöstem Dateinamen gespeichert, Bestätigung. |
 | REQ-CMD-004-B | Eingabe ohne Endung + mehrere passende Dateien → Warnung mit Duplikat-Liste, kein Mapping. |
 | REQ-CMD-004-C | Eingabe mit Endung + Datei existiert → Mapping gespeichert, Bestätigung. |

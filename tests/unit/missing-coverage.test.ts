@@ -206,11 +206,11 @@ describe("Missing Coverage Tests", () => {
       const userJoinedHandler = events.get("user:joined")!;
       await userJoinedHandler({ userId: 333, username: "LonelyUser" });
 
-      // The debug log should mention no active voice channel
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
+      // The error log should mention no active voice channel
+      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls.map(
         (c: unknown[]) => String(c[0]),
       );
-      const noChannelMsg = logMessages.filter((m: string) =>
+      const noChannelMsg = errorMessages.filter((m: string) =>
         m.includes("No active voice channel"),
       );
       expect(noChannelMsg.length).toBeGreaterThan(0);

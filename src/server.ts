@@ -351,6 +351,7 @@ const onLoad = async (ctx: PluginContext) => {
     // Cleanup function — tears down transport, producer, stream
     const cleanup = () => {
       clearInterval(consumerCheckInterval);
+      try { stream.remove(); } catch { /* ignore */ }
       try { producer.close(); } catch { /* ignore */ }
       try { transport.close(); } catch { /* ignore */ }
       debugLog(`Cleaned up audio resources for ${procKey}`);
@@ -562,6 +563,7 @@ const onLoad = async (ctx: PluginContext) => {
       _invokerCtx: TInvokerContext,
       args: { displayName: string; audioFileName: string },
     ) {
+      debugLog(`/hero-set called — displayName="${args.displayName}", audioFileName="${args.audioFileName}"`);
       const { displayName, audioFileName } = args;
       if (!displayName || !audioFileName) {
         return "Please provide both arguments. Usage: /hero-set <displayName> <audioFileName>";
@@ -594,6 +596,7 @@ const onLoad = async (ctx: PluginContext) => {
       _invokerCtx: TInvokerContext,
       args: { displayName: string },
     ) {
+      debugLog(`/hero-remove called — displayName="${args.displayName}"`);
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
       if (!musicMap[args.displayName]) {
         return `No intro configured for ${args.displayName}.`;
@@ -663,6 +666,7 @@ const onLoad = async (ctx: PluginContext) => {
       args: { audioFileName: string },
     ) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      debugLog(`/hero-set-me called — userId=${invokerUserId}, audioFileName="${args.audioFileName}"`);
       const { audioFileName } = args;
       if (!audioFileName) {
         return "Please provide an audio file name. Usage: /hero-set-me <audioFileName>";
@@ -692,6 +696,7 @@ const onLoad = async (ctx: PluginContext) => {
     async executes(invokerCtx: TInvokerContext) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
       const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      debugLog(`/hero-play-me called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}`);
 
       if (invokerUserId === undefined) {
         return "Could not determine your user ID.";
@@ -743,6 +748,7 @@ const onLoad = async (ctx: PluginContext) => {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
       const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
       const { displayName } = args;
+      debugLog(`/hero-play called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, displayName="${displayName}"`);
 
       if (!voiceChannelId) {
         return "You are not in a voice channel. Join one first, then try again.";
@@ -786,6 +792,7 @@ const onLoad = async (ctx: PluginContext) => {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
       const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
       const { songName } = args;
+      debugLog(`/hero-play-song called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, songName="${songName}"`);
 
       if (!songName) {
         return "Please provide a song name. Usage: /hero-play-song <songName>";
@@ -963,7 +970,7 @@ const onLoad = async (ctx: PluginContext) => {
       // Wait 2s for ffmpeg to send some packets
       await new Promise((r) => setTimeout(r, 2000));
 
-      let producerStats: any;
+      let producerStats: unknown;
       try {
         producerStats = await producer.getStats();
         const ps = (producerStats as Array<{ packetCount: number; byteCount: number; score: number }>)[0];
@@ -978,14 +985,14 @@ const onLoad = async (ctx: PluginContext) => {
 
       // --- Stage 4: Stream + Consumer discovery (CRITICAL) ---
       let sdkConsumerFound = false;
-      let sdkConsumerPaused: boolean | string = "unknown";
-      let sdkConsumerStats: any;
+      let sdkConsumerPaused: boolean | undefined;
+      let sdkConsumerStats: unknown;
 
       // Hook into producer observer to catch SDK-created consumers
       if (producer.observer?.on) {
-        producer.observer.on("newconsumer", async (consumer: any) => {
+        producer.observer.on("newconsumer", async (consumer: DiagConsumerLike) => {
           sdkConsumerFound = true;
-          sdkConsumerPaused = consumer.paused ?? "unknown";
+          sdkConsumerPaused = consumer.paused;
           try {
             sdkConsumerStats = await consumer.getStats();
           } catch { /* ignore */ }
@@ -1005,8 +1012,8 @@ const onLoad = async (ctx: PluginContext) => {
       await new Promise((r) => setTimeout(r, 5000));
 
       if (sdkConsumerFound) {
-        info("Stage 4", `SDK consumer found! paused=${sdkConsumerPaused}`);
-        if (sdkConsumerPaused === true) {
+        info("Stage 4", `SDK consumer found! paused=${sdkConsumerPaused ?? "unknown"}`);
+        if (sdkConsumerPaused) {
           fail("Stage 4", "SDK Consumer is PAUSED — this is likely the cause of BUG-001!");
           info("Stage 4", "mediasoup creates consumers paused by default. The SDK must call consumer.resume().");
         } else if (sdkConsumerPaused === false) {
@@ -1036,7 +1043,7 @@ const onLoad = async (ctx: PluginContext) => {
         }
 
         // Access all transports via router.transportsForTesting
-        const allTransports: Map<string, any> | undefined = (router as any).transportsForTesting;
+        const allTransports: Map<string, DiagTransport> | undefined = (router as unknown as { transportsForTesting?: Map<string, DiagTransport> }).transportsForTesting;
         if (allTransports && allTransports instanceof Map) {
           info("Stage 5", `router.transportsForTesting: ${allTransports.size} transports`);
 
@@ -1045,24 +1052,24 @@ const onLoad = async (ctx: PluginContext) => {
             if (tId === transport.id) continue;
 
             // Each transport has a .consumers Map
-            const consumers: Map<string, any> | undefined = tObj.consumers;
+            const consumers: Map<string, DiagConsumerLike> | undefined = tObj.consumers;
             if (consumers && consumers instanceof Map && consumers.size > 0) {
               for (const [cId, cObj] of consumers) {
                 if (!consumerIds.includes(cId)) continue;
 
                 // FOUND our consumer!
-                const cPaused = cObj.paused ?? "unknown";
+                const cPaused = cObj.paused;
                 const cKind = cObj.kind ?? "unknown";
                 const cType = cObj.type ?? "unknown";
-                const cProducerPaused = cObj.producerPaused ?? "unknown";
+                const cProducerPaused = cObj.producerPaused;
                 info("Stage 5", `CONSUMER ${cId}:`);
-                info("Stage 5", `  paused=${cPaused}, producerPaused=${cProducerPaused}, kind=${cKind}, type=${cType}`);
+                info("Stage 5", `  paused=${cPaused}, producerPaused=${cProducerPaused ?? "unknown"}, kind=${cKind}, type=${cType}`);
                 info("Stage 5", `  on transport ${tId} (type=${typeof tObj.dump === "function" ? "has dump()" : "no dump"})`);
 
-                if (cPaused === true) {
+                if (cPaused) {
                   fail("Stage 5", `Consumer ${cId} is PAUSED! This is likely BUG-001!`);
                   info("Stage 5", "The Sharkord SDK may not be calling consumer.resume() for plugin-created producers.");
-                } else if (cPaused === false) {
+                } else {
                   pass("Stage 5", `Consumer ${cId} is RESUMED (paused=false)`);
                 }
 
@@ -1098,7 +1105,7 @@ const onLoad = async (ctx: PluginContext) => {
             if (tId === transport.id) continue;
 
             // Check if this transport hosts our consumer
-            const tConsumers: Map<string, any> | undefined = tObj.consumers;
+            const tConsumers: Map<string, DiagConsumerLike> | undefined = tObj.consumers;
             const hasOurConsumer = tConsumers instanceof Map
               && [...tConsumers.keys()].some((k) => consumerIds.includes(k));
             if (!hasOurConsumer) continue;

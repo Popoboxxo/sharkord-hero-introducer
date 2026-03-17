@@ -315,8 +315,11 @@ describe("Plugin onLoad – commands & data", () => {
       expect(noIntroMsg).toHaveLength(0);
 
       // With no active voice channel the handler reaches the "No active voice channel" path
-      // which is logged via debugLog (ctx.log with [DEBUG] prefix)
-      const noChannelMsg = logMessages.filter((m: string) =>
+      // which is logged via ctx.error
+      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls.map(
+        (c: unknown[]) => String(c[0]),
+      );
+      const noChannelMsg = errorMessages.filter((m: string) =>
         m.includes("No active voice channel"),
       );
       expect(noChannelMsg.length).toBeGreaterThanOrEqual(1);

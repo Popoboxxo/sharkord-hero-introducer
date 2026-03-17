@@ -1,6 +1,6 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 17. Maerz 2026
+> **Stand:** 18. Maerz 2026
 > **Version:** 0.1.0
 
 ---
@@ -9,7 +9,7 @@
 
 | Datei | Zeilen | Rolle |
 |-------|--------|-------|
-| `src/server.ts` | ~1201 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Diagnose |
+| `src/server.ts` | ~1255 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Diagnose |
 | `src/client.ts` | 2 | Leerer Client-Entry-Point (kein UI) |
 | `build.ts` | ~62 | Bun Build-Script (Server + Client + package.json kopieren) |
 
@@ -147,16 +147,16 @@ async function playAudio(
 10. `ctx.actions.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`)
 11. Producer-Score-Monitoring via `producer.on("score", ...)`
 12. Debug-only: Test-Consumer erstellen (eigener PlainTransport + consume + resume) mit periodischem Stats-Logging (5s Intervall) und Router-Dump nach 3s
-13. `cleanup`-Funktion definiert: `clearInterval(consumerCheckInterval)`, `producer.close()`, `transport.close()`
+13. `cleanup`-Funktion definiert: `clearInterval(consumerCheckInterval)`, `stream.remove()`, `producer.close()`, `transport.close()`
 14. Session in `activeSessions` registrieren: `{ ffmpeg, cleanup }`
 15. ffmpeg stderr async auslesen und zeilenweise via `debugLog()` loggen
 16. `ffmpeg.exited.then(code => ...)`: Log-Eintrag, `activeSessions.delete(procKey)`, `cleanup()`
 
-### /hero-diagnose (interne Funktion, L803-L1166)
+### /hero-diagnose (interne Funktion, L809-L1220)
 
 **REQ:** REQ-DBG-008
 
-Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erstellt temporaere Ressourcen (Transport, Producer, ffmpeg, Stream) und inspiziert die gesamte Pipeline.
+Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erstellt temporaere Ressourcen (Transport, Producer, ffmpeg, Stream) und inspiziert die gesamte Pipeline. Verwendet lokale Diagnostic-Interfaces (`DiagConsumerLike`, `DiagProducer`, `DiagTransport`, `DiagRouter`, `DiagListenInfo`) statt `any` fuer Typsicherheit.
 
 **7 Stages:**
 
@@ -174,7 +174,7 @@ Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erste
 
 **Verdict:** Zaehlt alle `[FAIL]`-Eintraege. Bei 0 Failures: "All stages passed". Bei Failures: Liste der Fehler.
 
-### onUnload (L1196-L1198)
+### onUnload (L1251-L1253)
 
 Loggt `"Hero Introducer unloaded"`.
 
@@ -247,7 +247,7 @@ user:joined(userId, username)
   +- INTRO_DELAY_MS (5s) warten
   |
   +- Erster aktiver Channel aus activeChannels
-  |   +- Kein Channel? -> debugLog, return
+  |   +- Kein Channel? -> ctx.error(), return
   |
   +- playAudio(channelId, userId, username, audioPath)
   |
@@ -279,7 +279,7 @@ playAudio(channelId, userId, label, mp3Path)
   +- Producer-Score-Monitoring
   +- (Debug) Test-Consumer + periodische Stats
   |
-  +- cleanup-Funktion: producer.close(), transport.close()
+  +- cleanup-Funktion: stream.remove(), producer.close(), transport.close()
   +- Session in activeSessions registrieren
   |
   +- ffmpeg.exited -> Log + activeSessions.delete + cleanup()
@@ -445,11 +445,11 @@ bun build.ts
 
 ## Test-Abdeckung
 
-**Gesamt: 74 Tests in 5 Dateien**
+**Gesamt: 76 Tests in 5 Dateien**
 
 | Test-Datei | Anzahl Tests | Themen |
 |------------|-------------|--------|
-| `tests/unit/server.test.ts` | 29 | Lifecycle-Exports, MockPluginContext, Commands (/hero-set, /hero-remove, /hero-list, /hero-files, /hero-set-me, /hero-play-me, /hero-play), user:joined-Handler (Username-Lookup), Debug-Logging ein/aus, MPEG-Akzeptanz, Data-Persistenz |
+| `tests/unit/server.test.ts` | 31 | Lifecycle-Exports, MockPluginContext, Commands (/hero-set, /hero-remove, /hero-list, /hero-files, /hero-set-me, /hero-play-me, /hero-play), user:joined-Handler (Username-Lookup), Debug-Logging ein/aus, MPEG-Akzeptanz, Data-Persistenz |
 | `tests/unit/missing-coverage.test.ts` | 29 | REQ-CORE-002 (kein Mapping), REQ-CORE-003 (Datei-Existenz), REQ-CORE-005 (Channel-Tracking), REQ-CORE-006 (kein aktiver Channel), REQ-CMD-001/002/003 (Enable/Disable/Stop), REQ-CMD-010 (Dump-Context), REQ-CMD-013 (Play-Song mit/ohne Endung, Duplikate, Fehler), REQ-CFG-001 (disabled), REQ-CFG-002 (oncePerDay), REQ-CFG-003 (UI-Aktivierung), REQ-CFG-004 (Debug-Setting-Registrierung), REQ-DATA-001/002/004/007 (Persistenz, Fallback, User-Cache), flexible Dateinamen-Aufloesung fuer /hero-set und /hero-set-me |
 | `tests/unit/play-audio.test.ts` | 8 | playAudio-Pipeline: Transport-Config, Producer-RTP, SSRC-Konsistenz, ffmpeg-Args, Volume, Stream-Registration, Cleanup, Concurrent-Playback |
 | `tests/unit/play-audio-comparison.test.ts` | 4 | Referenz-Paritaetstests: Transport-, Codec-, ffmpeg-, createStream-Konfiguration vs. sharkord-music-bot |
@@ -518,3 +518,4 @@ bun build.ts
 | 2026-03-15 | Vollstaendige Aktualisierung: playAudio-Architektur (on-demand, Bun.spawn, activeSessions statt activeProcesses), resolveAudioFile-Funktion, volume-Setting, /hero-play-song Command, /hero-debug entfernt, Flows aktualisiert, bekannter Audio-Bug dokumentiert |
 | 2026-03-17 | Vollstaendige Aktualisierung: /hero-diagnose Command (7 Stages) hinzugefuegt, Zeilennummern aktualisiert (~1201 Zeilen), Test-Abdeckung erweitert (play-audio.test.ts: 8 Tests, play-audio-comparison.test.ts: 4 Tests), Lueckenanalyse aktualisiert, REQ-CFG-005 korrekt zugeordnet, Flow 7 (Diagnose) und Flow 8 (Build) hinzugefuegt |
 | 2026-03-17 | Test-Abdeckung aktualisiert: missing-coverage.test.ts (29 Tests) und server.test.ts (29 Tests, vorher faelschlich als 18 dokumentiert) aufgenommen. Gesamtzahl: 74 Tests in 5 Dateien. Lueckenanalyse vollstaendig ueberarbeitet — viele REQ-IDs jetzt durch missing-coverage.test.ts abgedeckt (REQ-CORE-002/003/005/006, REQ-CMD-001/002/003/010/013, REQ-CFG-001/002/003/004, REQ-DATA-001/002/004/007). |
+| 2026-03-18 | Code-Fixes reflektiert: `any` durch `unknown`/Diagnostic-Interfaces ersetzt (REQ-NF-001), `stream.remove()` in cleanup() ergaenzt, `ctx.error()` statt `debugLog()` bei fehlendem Voice-Channel (REQ-CORE-006), debugLog in allen 13 Command-Handlern (REQ-DBG-005). Zeilennummern aktualisiert (~1255 Zeilen). Tests: 76 in 5 Dateien (server.test.ts: 31, missing-coverage.test.ts: 29). |
