@@ -1,4 +1,4 @@
-FROM sharkord/sharkord:latest
+FROM sharkord/sharkord:v0.0.15
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \

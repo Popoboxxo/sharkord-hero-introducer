@@ -208,6 +208,7 @@
 | REQ-DBG-005 | Bei jedem Command-Aufruf werden Command-Name, userId und übergebene Argumente via Debug-Log geloggt. | Implemented | Should | `src/server.ts` (diverse Command-Handler) |
 | REQ-DBG-006 | Beim User-Cache-Update (Persistierung der userId→username-Zuordnung) wird ein Debug-Log-Eintrag mit der aktualisierten Zuordnung erzeugt. | Implemented | Should | `src/server.ts` L425–L429 |
 | REQ-DBG-007 | In der Funktion `playAudio` wird ein vollständiger State-Dump geloggt, der mindestens die Anzahl aktiver Prozesse (`activeSessions.size`) und die Liste aktiver Voice-Channels (`activeChannels`) enthält. | Implemented | Should | `src/server.ts` L208 |
+| REQ-DBG-008 | `/hero-diagnose` führt eine vollständige Pipeline-Diagnose durch: Pre-flight (ffmpeg, Channels), Transport-Erstellung, Producer-Erstellung mit paused-Check, ffmpeg-Spawn mit Stats-Prüfung, Stream-Registration mit Consumer-Discovery via `producer.observer.on("newconsumer")`, Router-State-Dump. Gibt strukturierten Report mit PASS/FAIL pro Stage zurück. | Implemented | Should | `src/server.ts` (hero-diagnose Command) |
 
 ### Abnahmekriterien REQ-DBG
 
@@ -220,6 +221,7 @@
 | REQ-DBG-005 | Command wird ausgeführt → Log enthält Command-Name, userId des Aufrufers und alle übergebenen Argumente. |
 | REQ-DBG-006 | User-Cache wird aktualisiert → Log enthält die persistierte userId→username-Zuordnung. |
 | REQ-DBG-007 | `playAudio` wird aufgerufen → Log enthält State-Dump mit `activeSessions`-Anzahl und `activeChannels`-Liste. |
+| REQ-DBG-008 | `/hero-diagnose` ausgeführt in Voice-Channel → Report mit 6 Stages (0-5), PASS/FAIL-Markierungen und Verdict wird als Chat-Antwort und Server-Log ausgegeben. |
 
 ---
 
@@ -284,6 +286,7 @@
 | REQ-DBG-005 | `src/server.ts` (diverse Command-Handler) | — (offen) |
 | REQ-DBG-006 | `src/server.ts` L425–L429 | — (offen) |
 | REQ-DBG-007 | `src/server.ts` L208 | — (offen) |
+| REQ-DBG-008 | `src/server.ts` (hero-diagnose Command) | — (offen) |
 
 ---
 
@@ -302,6 +305,10 @@
 
 ### Bereits getestet:
 - **REQ-CORE-001** — Auto-Play bei Join (`tests/unit/server.test.ts`)
+- **REQ-CORE-004** — Transport-Config, Producer-RTP-Parameter, SSRC-Konsistenz, ffmpeg-Args, Stream-Registration (`tests/unit/play-audio.test.ts`, `tests/unit/play-audio-comparison.test.ts`)
+- **REQ-CORE-007** — Cleanup nach ffmpeg-Exit (`tests/unit/play-audio.test.ts`)
+- **REQ-CORE-008** — Concurrent Playback Protection (`tests/unit/play-audio.test.ts`)
+- **REQ-CFG-005** — Volume-Setting in ffmpeg-Args (`tests/unit/play-audio.test.ts`)
 - **REQ-CMD-004 bis REQ-CMD-007** — Set, Remove, List, Files Commands (`tests/unit/server.test.ts`)
 - **REQ-CMD-009** — Set-Me Command (`tests/unit/server.test.ts`)
 - **REQ-CMD-011** — Play-Me Command (`tests/unit/server.test.ts`)
@@ -333,3 +340,4 @@
 | 2026-03-15 | REQ-CMD-008 (`/hero-debug`) entfernt — Debug wird ausschließlich über Settings-UI gesteuert (REQ-CFG-004). REQ-CMD-013 (`/hero-play-song`) hinzugefügt: Song-Wiedergabe mit optionaler Dateiendung und Duplikat-Erkennung. Audio-Playback-Timing korrigiert (Stream vor ffmpeg, Consumer-Setup-Delay). | Developer |
 | 2026-03-15 | Flexible Dateinamen-Suche: REQ-CMD-004 (`/hero-set`) und REQ-CMD-009 (`/hero-set-me`) akzeptieren jetzt Dateinamen mit oder ohne Endung (case-insensitive, Duplikat-Erkennung). Gemeinsame `resolveAudioFile`-Hilfsfunktion extrahiert und in allen 3 betroffenen Commands verwendet. Abnahmekriterien aktualisiert. | Developer |
 | 2026-03-15 | REQ-CFG-005 (Volume-Setting) hinzugefügt. REQ-CORE-009 (On-Demand Playback ohne persistenten Bot) hinzugefügt. REQ-CORE-004 aktualisiert (Bun.spawn, Referenz-Plugin-Angleichung, bekannter Audio-Bug dokumentiert). Alle Traceability-Zeilennummern aktualisiert. Sektion "Bekannte Bugs" (BUG-001) hinzugefügt. Lückenanalyse erweitert um REQ-CORE-009 und REQ-CFG-005. | Requirements Engineer |
+| 2026-03-15 | REQ-DBG-008 (`/hero-diagnose`) hinzugefügt: Pipeline-Diagnose-Command mit 6 Stages (Pre-flight, Transport, Producer, ffmpeg, Stream+Consumer-Discovery, Router-Dump). Unit-Tests fuer playAudio-Pipeline (8 Tests) und Referenz-Paritaetstests (4 Tests) erstellt. Mock-Infrastruktur erweitert (Producer, Consumer, Router, Bun.spawn). | Developer |

@@ -800,6 +800,371 @@ const onLoad = async (ctx: PluginContext) => {
     },
   });
 
+  // /hero-diagnose – full audio pipeline diagnostic
+  ctx.commands.register({
+    name: "hero-diagnose",
+    description: "Run a full audio pipeline diagnostic to find where audio breaks.",
+    args: [],
+    async executes(invokerCtx: TInvokerContext) {
+      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      const lines: string[] = ["=== HERO-INTRODUCER DIAGNOSTIC REPORT ===", ""];
+
+      function pass(stage: string, detail: string) { lines.push(`[PASS] ${stage}: ${detail}`); }
+      function fail(stage: string, detail: string) { lines.push(`[FAIL] ${stage}: ${detail}`); }
+      function info(stage: string, detail: string) { lines.push(`[INFO] ${stage}: ${detail}`); }
+
+      // --- Stage 0: Pre-flight ---
+      if (!voiceChannelId) {
+        fail("Stage 0", "You are not in a voice channel.");
+        return lines.join("\n");
+      }
+
+      let ffmpegOk = false;
+      try {
+        const probe = Bun.spawn({ cmd: ["ffmpeg", "-version"], stdout: "pipe", stderr: "ignore", stdin: "ignore" });
+        await probe.exited;
+        ffmpegOk = true;
+      } catch { /* ignore */ }
+
+      if (ffmpegOk) pass("Stage 0", "ffmpeg found"); else fail("Stage 0", "ffmpeg NOT found");
+      info("Stage 0", `Active channels: [${[...activeChannels].join(", ")}]`);
+
+      // --- Stage 1: Transport ---
+      let router: any;
+      let listenInfo: any;
+      let transport: any;
+      let rtpPort: number;
+      try {
+        router = ctx.actions.voice.getRouter(voiceChannelId);
+        listenInfo = await ctx.actions.voice.getListenInfo();
+        transport = await router.createPlainTransport({
+          listenIp: { ip: listenInfo.ip, announcedIp: listenInfo.announcedAddress },
+          rtcpMux: true,
+          comedia: true,
+          enableSrtp: false,
+        });
+        rtpPort = transport.tuple.localPort;
+        pass("Stage 1", `Transport created (port=${rtpPort}, ip=${listenInfo.ip})`);
+      } catch (err) {
+        fail("Stage 1", `Transport creation failed: ${String(err)}`);
+        return lines.join("\n");
+      }
+
+      // --- Stage 2: Producer ---
+      const ssrc = Math.floor(Math.random() * 1e9);
+      let producer: any;
+      try {
+        producer = await transport.produce({
+          kind: "audio",
+          rtpParameters: {
+            codecs: [{
+              mimeType: "audio/opus",
+              payloadType: 111,
+              clockRate: 48000,
+              channels: 2,
+              parameters: {},
+              rtcpFeedback: [],
+            }],
+            encodings: [{ ssrc }],
+          },
+        });
+        const producerPaused = producer.paused ?? "unknown";
+        pass("Stage 2", `Producer created (id=${producer.id}, paused=${producerPaused}, SSRC=${ssrc})`);
+        if (producer.paused) {
+          fail("Stage 2", "Producer is PAUSED — RTP data will be discarded!");
+        }
+      } catch (err) {
+        fail("Stage 2", `Producer creation failed: ${String(err)}`);
+        try { transport.close(); } catch { /* ignore */ }
+        return lines.join("\n");
+      }
+
+      // --- Stage 3: ffmpeg ---
+      // Find any audio file to use as test input
+      let testAudioPath: string | undefined;
+      try {
+        const files = await fs.readdir(musicDir);
+        const audioFile = files.find((f) => isSupportedAudioFile(f));
+        if (audioFile) testAudioPath = path.join(musicDir, audioFile);
+      } catch { /* ignore */ }
+
+      if (!testAudioPath) {
+        info("Stage 3", "No audio file found — generating 3s silence via ffmpeg");
+      }
+
+      const ffmpegArgs = testAudioPath
+        ? [
+          "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
+          "-re", "-i", testAudioPath, "-vn", "-t", "5",
+          "-af", "volume=0.25",
+          "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
+          "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),
+          "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
+        ]
+        : [
+          "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
+          "-re", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "3",
+          "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
+          "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),
+          "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
+        ];
+
+      const ffmpeg = Bun.spawn({ cmd: ffmpegArgs, stdout: "ignore", stderr: "pipe", stdin: "ignore" });
+      info("Stage 3", `ffmpeg spawned (PID=${ffmpeg.pid}, SSRC=${ssrc}, target=rtp://${listenInfo.ip}:${rtpPort})`);
+
+      // Wait 2s for ffmpeg to send some packets
+      await new Promise((r) => setTimeout(r, 2000));
+
+      let producerStats: any;
+      try {
+        producerStats = await producer.getStats();
+        const ps = (producerStats as Array<{ packetCount: number; byteCount: number; score: number }>)[0];
+        if (ps && ps.packetCount > 0) {
+          pass("Stage 3", `ffmpeg OK (${ps.packetCount} pkts, ${ps.byteCount} bytes, score=${ps.score})`);
+        } else {
+          fail("Stage 3", `No RTP packets received by producer (packetCount=${ps?.packetCount ?? 0})`);
+        }
+      } catch (err) {
+        fail("Stage 3", `Producer getStats failed: ${String(err)}`);
+      }
+
+      // --- Stage 4: Stream + Consumer discovery (CRITICAL) ---
+      let sdkConsumerFound = false;
+      let sdkConsumerPaused: boolean | string = "unknown";
+      let sdkConsumerStats: any;
+
+      // Hook into producer observer to catch SDK-created consumers
+      if (producer.observer?.on) {
+        producer.observer.on("newconsumer", async (consumer: any) => {
+          sdkConsumerFound = true;
+          sdkConsumerPaused = consumer.paused ?? "unknown";
+          try {
+            sdkConsumerStats = await consumer.getStats();
+          } catch { /* ignore */ }
+          ctx.log(`[DIAG] SDK consumer detected: id=${consumer.id}, paused=${consumer.paused}`);
+        });
+      }
+
+      const stream = ctx.actions.voice.createStream({
+        channelId: voiceChannelId,
+        title: `Diagnostic Test`,
+        key: `hero-diag-${voiceChannelId}-${invokerUserId ?? 0}`,
+        producers: { audio: producer },
+      });
+      info("Stage 4", "Stream registered, waiting 5s for SDK to create consumer...");
+
+      // Wait for SDK to create consumer
+      await new Promise((r) => setTimeout(r, 5000));
+
+      if (sdkConsumerFound) {
+        info("Stage 4", `SDK consumer found! paused=${sdkConsumerPaused}`);
+        if (sdkConsumerPaused === true) {
+          fail("Stage 4", "SDK Consumer is PAUSED — this is likely the cause of BUG-001!");
+          info("Stage 4", "mediasoup creates consumers paused by default. The SDK must call consumer.resume().");
+        } else if (sdkConsumerPaused === false) {
+          pass("Stage 4", "SDK Consumer is resumed (paused=false)");
+        }
+        if (sdkConsumerStats) {
+          info("Stage 4", `SDK consumer stats: ${JSON.stringify(sdkConsumerStats)}`);
+        }
+      } else {
+        info("Stage 4", "No SDK consumer detected via producer.observer");
+        info("Stage 4", "Checking router dump for consumers...");
+      }
+
+      // --- Stage 5: Router state dump + object introspection ---
+      try {
+        const dump = await router.dump();
+        const entry = dump.mapProducerIdConsumerIds?.find((e: { key: string }) => e.key === producer.id);
+        const consumerIds = entry?.values ?? [];
+        const consumerCount = consumerIds.length;
+        info("Stage 5", `Router: ${dump.transportIds?.length ?? 0} transports`);
+        info("Stage 5", `Consumers for our producer: ${consumerCount} — IDs: ${JSON.stringify(consumerIds)}`);
+
+        if (consumerCount === 0) {
+          fail("Stage 5", "No consumers exist for our producer! SDK did not create a consumer.");
+        } else {
+          pass("Stage 5", `${consumerCount} consumer(s) found in router`);
+        }
+
+        // Access all transports via router.transportsForTesting
+        const allTransports: Map<string, any> | undefined = (router as any).transportsForTesting;
+        if (allTransports && allTransports instanceof Map) {
+          info("Stage 5", `router.transportsForTesting: ${allTransports.size} transports`);
+
+          for (const [tId, tObj] of allTransports) {
+            // Skip our own diagnostic transport
+            if (tId === transport.id) continue;
+
+            // Each transport has a .consumers Map
+            const consumers: Map<string, any> | undefined = tObj.consumers;
+            if (consumers && consumers instanceof Map && consumers.size > 0) {
+              for (const [cId, cObj] of consumers) {
+                if (!consumerIds.includes(cId)) continue;
+
+                // FOUND our consumer!
+                const cPaused = cObj.paused ?? "unknown";
+                const cKind = cObj.kind ?? "unknown";
+                const cType = cObj.type ?? "unknown";
+                const cProducerPaused = cObj.producerPaused ?? "unknown";
+                info("Stage 5", `CONSUMER ${cId}:`);
+                info("Stage 5", `  paused=${cPaused}, producerPaused=${cProducerPaused}, kind=${cKind}, type=${cType}`);
+                info("Stage 5", `  on transport ${tId} (type=${typeof tObj.dump === "function" ? "has dump()" : "no dump"})`);
+
+                if (cPaused === true) {
+                  fail("Stage 5", `Consumer ${cId} is PAUSED! This is likely BUG-001!`);
+                  info("Stage 5", "The Sharkord SDK may not be calling consumer.resume() for plugin-created producers.");
+                } else if (cPaused === false) {
+                  pass("Stage 5", `Consumer ${cId} is RESUMED (paused=false)`);
+                }
+
+                // Get consumer stats
+                try {
+                  const cStats = await cObj.getStats();
+                  info("Stage 5", `  stats: ${JSON.stringify(cStats)}`);
+                } catch (e) {
+                  info("Stage 5", `  stats error: ${String(e)}`);
+                }
+
+                // Get consumer score
+                try {
+                  info("Stage 5", `  score: ${JSON.stringify(cObj.score)}`);
+                } catch { /* ignore */ }
+
+                // Log consumer's own keys for further debugging
+                const cKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(cObj) ?? {});
+                info("Stage 5", `  proto keys: [${cKeys.join(", ")}]`);
+              }
+            }
+          }
+        } else {
+          info("Stage 5", "router.transportsForTesting not available");
+        }
+
+        info("Stage 5", `All mappings: ${JSON.stringify(dump.mapProducerIdConsumerIds)}`);
+
+        // --- Stage 6: Client transport deep inspection ---
+        lines.push("");
+        if (allTransports && allTransports instanceof Map) {
+          for (const [tId, tObj] of allTransports) {
+            if (tId === transport.id) continue;
+
+            // Check if this transport hosts our consumer
+            const tConsumers: Map<string, any> | undefined = tObj.consumers;
+            const hasOurConsumer = tConsumers instanceof Map
+              && [...tConsumers.keys()].some((k) => consumerIds.includes(k));
+            if (!hasOurConsumer) continue;
+
+            info("Stage 6", `=== CLIENT TRANSPORT ${tId} ===`);
+
+            // Transport type and proto keys
+            const tProtoKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(tObj) ?? {});
+            const tOwnKeys = Object.getOwnPropertyNames(tObj);
+            info("Stage 6", `proto keys: [${tProtoKeys.join(", ")}]`);
+            info("Stage 6", `own keys: [${tOwnKeys.join(", ")}]`);
+
+            // Dump transport state
+            try {
+              const tDump = await tObj.dump();
+              info("Stage 6", `type: ${tDump.type ?? "unknown"}`);
+              info("Stage 6", `iceState: ${tDump.iceState ?? "n/a"}`);
+              info("Stage 6", `iceRole: ${tDump.iceRole ?? "n/a"}`);
+              info("Stage 6", `dtlsState: ${tDump.dtlsState ?? "n/a"}`);
+              info("Stage 6", `sctpState: ${tDump.sctpState ?? "n/a"}`);
+              info("Stage 6", `iceSelectedTuple: ${JSON.stringify(tDump.iceSelectedTuple ?? null)}`);
+              info("Stage 6", `producerIds: ${JSON.stringify(tDump.producerIds ?? [])}`);
+              info("Stage 6", `consumerIds: ${JSON.stringify(tDump.consumerIds ?? [])}`);
+
+              // ICE state check
+              if (tDump.iceState && tDump.iceState !== "completed") {
+                fail("Stage 6", `ICE state is '${tDump.iceState}' (expected 'completed') — WebRTC handshake not complete!`);
+              } else if (tDump.iceState === "completed") {
+                pass("Stage 6", "ICE state: completed");
+              }
+
+              // DTLS state check
+              if (tDump.dtlsState && tDump.dtlsState !== "connected") {
+                fail("Stage 6", `DTLS state is '${tDump.dtlsState}' (expected 'connected') — encryption handshake not complete!`);
+              } else if (tDump.dtlsState === "connected") {
+                pass("Stage 6", "DTLS state: connected");
+              }
+
+              // Bytes sent/received on the transport
+              if (tDump.bytesReceived !== undefined || tDump.bytesSent !== undefined) {
+                info("Stage 6", `bytesReceived=${tDump.bytesReceived ?? 0}, bytesSent=${tDump.bytesSent ?? 0}`);
+              }
+
+              // Log full dump for detailed analysis
+              info("Stage 6", `full dump: ${JSON.stringify(tDump)}`);
+            } catch (e) {
+              info("Stage 6", `dump error: ${String(e)}`);
+            }
+
+            // Transport getStats
+            try {
+              if (typeof tObj.getStats === "function") {
+                const tStats = await tObj.getStats();
+                info("Stage 6", `transport stats: ${JSON.stringify(tStats)}`);
+              }
+            } catch { /* ignore */ }
+
+            // Check all consumers on this transport for outbound stats
+            if (tConsumers instanceof Map) {
+              for (const [cId, cObj] of tConsumers) {
+                try {
+                  const cStats = await cObj.getStats();
+                  const outbound = (cStats as Array<Record<string, unknown>>).find(
+                    (s) => s.type === "outbound-rtp",
+                  );
+                  const inbound = (cStats as Array<Record<string, unknown>>).find(
+                    (s) => s.type === "inbound-rtp",
+                  );
+                  if (outbound) {
+                    const outPkts = (outbound.packetCount as number) ?? 0;
+                    const outBytes = (outbound.byteCount as number) ?? 0;
+                    if (outPkts === 0) {
+                      fail("Stage 6", `Consumer ${cId} outbound: 0 packets sent to client! Audio not reaching WebRTC transport.`);
+                    } else {
+                      pass("Stage 6", `Consumer ${cId} outbound: ${outPkts} pkts, ${outBytes} bytes sent`);
+                    }
+                    info("Stage 6", `Consumer ${cId} outbound-rtp: ${JSON.stringify(outbound)}`);
+                  }
+                  if (inbound) {
+                    info("Stage 6", `Consumer ${cId} inbound-rtp: ${JSON.stringify(inbound)}`);
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        fail("Stage 5", `Router dump failed: ${String(err)}`);
+      }
+
+      // --- Cleanup ---
+      ffmpeg.kill();
+      try { producer.close(); } catch { /* ignore */ }
+      try { transport.close(); } catch { /* ignore */ }
+
+      // --- Verdict ---
+      lines.push("");
+      lines.push("=== VERDICT ===");
+      const failures = lines.filter((l) => l.startsWith("[FAIL]"));
+      if (failures.length === 0) {
+        lines.push("All stages passed including transport state.");
+        lines.push("If audio is still not heard: check browser autoplay policy, client volume, or contact Sharkord SDK support.");
+      } else {
+        lines.push(`${failures.length} failure(s) detected:`);
+        for (const f of failures) lines.push(`  ${f}`);
+      }
+
+      const report = lines.join("\n");
+      ctx.log(`[DIAG]\n${report}`);
+      return report;
+    },
+  });
+
   // /hero-dump-context – logs the full invokerCtx for debugging SDK types
   ctx.commands.register<{ testArg: string }>({
     name: "hero-dump-context",
