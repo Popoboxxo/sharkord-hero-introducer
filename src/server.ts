@@ -229,15 +229,31 @@ const onLoad = async (ctx: PluginContext) => {
     });
 
     const ssrc = Math.floor(Math.random() * 1e9);
+
+    // Resolve payloadType from router's rtpCapabilities (like music-bot does)
+    // Falls back to 111 if not found
+    const routerCodecs = (router.rtpCapabilities?.codecs ?? []) as Array<{
+      mimeType?: string;
+      preferredPayloadType?: number;
+    }>;
+    const opusCodec = routerCodecs.find(
+      (c) => c.mimeType?.toLowerCase() === "audio/opus",
+    );
+    const payloadType = opusCodec?.preferredPayloadType ?? 111;
+    debugLog(`Resolved payloadType=${payloadType} from router (opus codec found: ${!!opusCodec})`);
+
     const producer = await transport.produce({
       kind: "audio",
       rtpParameters: {
         codecs: [{
           mimeType: "audio/opus",
-          payloadType: 111,
+          payloadType,
           clockRate: 48000,
           channels: 2,
-          parameters: {},
+          parameters: {
+            "minptime": 10,
+            "useinbandfec": 1,
+          },
           rtcpFeedback: [],
         }],
         encodings: [{ ssrc }],
@@ -262,6 +278,7 @@ const onLoad = async (ctx: PluginContext) => {
       "-nostats",
       "-loglevel", settings.get("debug") ? "verbose" : "warning",
       "-re",
+      "-fflags", "+genpts",
       "-i", mp3Path,
       "-vn",
       "-af", `volume=${volumeDecimal}`,
@@ -269,8 +286,10 @@ const onLoad = async (ctx: PluginContext) => {
       "-ar", "48000",
       "-ac", "2",
       "-b:a", "128k",
+      "-vbr", "off",
+      "-frame_duration", "20",
       "-application", "audio",
-      "-payload_type", "111",
+      "-payload_type", String(payloadType),
       "-ssrc", String(ssrc),
       "-f", "rtp",
       `rtp://${rtpTargetHost}:${rtpPort}?pkt_size=1200`,
@@ -299,58 +318,8 @@ const onLoad = async (ctx: PluginContext) => {
       debugLog(`Producer score: ${JSON.stringify(score)}`);
     });
 
-    // Server-side test: create our OWN consumer to verify mediasoup routing works
-    let testConsumerInterval: ReturnType<typeof setInterval> | undefined;
-    try {
-      const testTransport = await router.createPlainTransport({
-        listenIp: { ip: listenInfo.ip, announcedIp: listenInfo.announcedAddress },
-        rtcpMux: true,
-        comedia: false,
-      });
-      const testConsumer = await testTransport.consume({
-        producerId: producer.id,
-        rtpCapabilities: router.rtpCapabilities,
-      });
-      if (testConsumer.paused) {
-        await testConsumer.resume();
-      }
-      debugLog(`Test consumer created: id=${testConsumer.id}, paused=${testConsumer.paused}, kind=${testConsumer.kind}`);
-      debugLog(`Test consumer rtpParams: ${JSON.stringify(testConsumer.rtpParameters.codecs[0])}`);
-
-      // Connect test transport to a local UDP port to receive data
-      const testPort = testTransport.tuple.localPort;
-      debugLog(`Test consumer transport port: ${testPort}`);
-
-      testConsumerInterval = setInterval(async () => {
-        try {
-          const stats = await testConsumer.getStats();
-          debugLog(`Test consumer stats: ${JSON.stringify(stats)}`);
-          const pStats = await producer.getStats();
-          const ps = (pStats as unknown as Array<{ packetCount: number; byteCount: number; score: number }>)[0];
-          debugLog(`Producer: ${ps?.packetCount ?? 0} pkts, ${ps?.byteCount ?? 0} bytes, score=${ps?.score ?? 0}`);
-        } catch { /* ignore */ }
-      }, 5000);
-
-      // Also check client consumer
-      setTimeout(async () => {
-        try {
-          const dump = await router.dump();
-          const entry = dump.mapProducerIdConsumerIds.find((e: { key: string }) => e.key === producer.id);
-          debugLog(`=== ROUTER STATE ===`);
-          debugLog(`Consumers for our producer: ${JSON.stringify(entry)}`);
-          debugLog(`All transports: ${JSON.stringify(dump.transportIds)}`);
-          debugLog(`All producer→consumer mappings: ${JSON.stringify(dump.mapProducerIdConsumerIds)}`);
-        } catch { /* ignore */ }
-      }, 3000);
-    } catch (err) {
-      debugLog(`Test consumer error: ${String(err)}`);
-    }
-
-    const consumerCheckInterval = testConsumerInterval;
-
     // Cleanup function — tears down transport, producer, stream
     const cleanup = () => {
-      clearInterval(consumerCheckInterval);
       try { stream.remove(); } catch { /* ignore */ }
       try { producer.close(); } catch { /* ignore */ }
       try { transport.close(); } catch { /* ignore */ }
@@ -907,6 +876,14 @@ const onLoad = async (ctx: PluginContext) => {
 
       // --- Stage 2: Producer ---
       const ssrc = Math.floor(Math.random() * 1e9);
+      // Resolve payloadType from router (same logic as playAudio)
+      const diagRouterCodecs = ((router as unknown as { rtpCapabilities?: { codecs?: Array<{ mimeType?: string; preferredPayloadType?: number }> } }).rtpCapabilities?.codecs ?? []);
+      const diagOpusCodec = diagRouterCodecs.find(
+        (c: { mimeType?: string }) => c.mimeType?.toLowerCase() === "audio/opus",
+      );
+      const diagPayloadType = diagOpusCodec?.preferredPayloadType ?? 111;
+      info("Stage 2", `Resolved payloadType=${diagPayloadType} from router`);
+
       let producer: DiagProducer;
       try {
         producer = await transport.produce({
@@ -914,10 +891,13 @@ const onLoad = async (ctx: PluginContext) => {
           rtpParameters: {
             codecs: [{
               mimeType: "audio/opus",
-              payloadType: 111,
+              payloadType: diagPayloadType,
               clockRate: 48000,
               channels: 2,
-              parameters: {},
+              parameters: {
+                "minptime": 10,
+                "useinbandfec": 1,
+              },
               rtcpFeedback: [],
             }],
             encodings: [{ ssrc }],
@@ -950,17 +930,19 @@ const onLoad = async (ctx: PluginContext) => {
       const ffmpegArgs = testAudioPath
         ? [
           "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
-          "-re", "-i", testAudioPath, "-vn", "-t", "5",
+          "-re", "-fflags", "+genpts", "-i", testAudioPath, "-vn", "-t", "5",
           "-af", "volume=0.25",
           "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
-          "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),
+          "-vbr", "off", "-frame_duration", "20",
+          "-application", "audio", "-payload_type", String(diagPayloadType), "-ssrc", String(ssrc),
           "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
         ]
         : [
           "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
           "-re", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "3",
           "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
-          "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),
+          "-vbr", "off", "-frame_duration", "20",
+          "-application", "audio", "-payload_type", String(diagPayloadType), "-ssrc", String(ssrc),
           "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
         ];
 

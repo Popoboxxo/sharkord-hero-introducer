@@ -83,8 +83,8 @@ Audio-Datei (.mp3/.mpeg)
   |
   v
 ffmpeg (Bun.spawn)
-  - Dekodiert Audio
-  - Enkodiert als Opus
+  - Dekodiert Audio (-fflags +genpts)
+  - Enkodiert als Opus (-vbr off, -frame_duration 20, dynamischer payload_type)
   - Sendet als RTP-Pakete
   |
   v
@@ -92,7 +92,7 @@ mediasoup PlainTransport (UDP, comedia)
   - Empfaengt RTP auf lokalen Port
   |
   v
-mediasoup Producer (audio/opus, PT 111, 48kHz, stereo)
+mediasoup Producer (audio/opus, dynamischer PT vom Router, 48kHz, stereo, minptime=10, useinbandfec=1)
   |
   v
 Sharkord SDK createStream()
@@ -187,6 +187,9 @@ dist/sharkord-hero-introducer/
 | Server-seitige Volume-Kontrolle via ffmpeg | Einfacher als Client-seitige Anpassung, sofort wirksam fuer alle Listener. |
 | `/hero-diagnose` mit 7 Stages | Systematische Fehlersuche fuer BUG-001 (Audio nicht hoerbar). Jede Stage ist isoliert testbar. |
 | Diagnostic-Interfaces statt `any` | Lokale Interfaces (`DiagConsumerLike`, `DiagProducer`, `DiagTransport`, `DiagRouter`) im hero-diagnose Command fuer Typsicherheit bei mediasoup-Runtime-Introspektion. |
+| Dynamischer PayloadType vom Router | PayloadType wird zur Laufzeit aus `router.rtpCapabilities.codecs` aufgeloest statt hardcoded. Stellt sicher, dass der PayloadType mit dem mediasoup-Router uebereinstimmt. |
+| Codec-Parameters (minptime, useinbandfec) | Opus-Codec-Parameter identisch zum funktionierenden `sharkord-music-bot`. Verbessert Audio-Qualitaet und -Zuverlaessigkeit. |
+| Kein manueller Consumer-Hack | Consumer-Erstellung wird dem SDK via `createStream()` ueberlassen. Der zuvor vorhandene manuelle Hack ueber `router.transportsForTesting` wurde als Ursache fuer BUG-001 identifiziert und entfernt. |
 
 ---
 
@@ -196,3 +199,4 @@ dist/sharkord-hero-introducer/
 |-------|----------|
 | 2026-03-17 | Initiale Erstellung basierend auf IST-Zustand des Codes |
 | 2026-03-18 | cleanup() um stream.remove() erweitert, Diagnostic-Interfaces dokumentiert |
+| 2026-03-18 | BUG-001 Fix: Audio-Pipeline aktualisiert (dynamischer PayloadType, Codec-Parameters, ffmpeg-Flags, manueller Consumer-Hack entfernt). Neue Architektur-Entscheidungen dokumentiert. |

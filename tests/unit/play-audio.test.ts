@@ -177,7 +177,7 @@ describe("playAudio pipeline", () => {
     expect(codec.payloadType).toBe(111);
     expect(codec.clockRate).toBe(48000);
     expect(codec.channels).toBe(2);
-    expect(codec.parameters).toEqual({});
+    expect(codec.parameters).toEqual({ "minptime": 10, "useinbandfec": 1 });
     expect(codec.rtcpFeedback).toEqual([]);
   });
 

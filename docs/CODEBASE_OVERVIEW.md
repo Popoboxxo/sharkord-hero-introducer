@@ -9,7 +9,7 @@
 
 | Datei | Zeilen | Rolle |
 |-------|--------|-------|
-| `src/server.ts` | ~1255 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Diagnose |
+| `src/server.ts` | ~1237 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Diagnose |
 | `src/client.ts` | 2 | Leerer Client-Entry-Point (kein UI) |
 | `build.ts` | ~62 | Bun Build-Script (Server + Client + package.json kopieren) |
 
@@ -116,7 +116,7 @@ Abschliessend: `ctx.ui.enable()` (REQ-CFG-003), `ctx.log("Hero Introducer ready"
 
 **Hinweis:** `/hero-debug` existiert nicht mehr. Der Debug-Modus wird ausschliesslich ueber die Settings-UI gesteuert (REQ-CFG-004).
 
-### playAudio (interne Funktion, L201-L391)
+### playAudio (interne Funktion, L201-L361)
 
 ```typescript
 async function playAudio(
@@ -129,7 +129,7 @@ async function playAudio(
 
 **REQ:** REQ-CORE-004, REQ-CORE-006, REQ-CORE-007, REQ-CORE-008, REQ-CORE-009, REQ-DBG-003
 
-**Architektur:** On-demand Playback. Bot joint nicht dauerhaft -- erstellt alles pro Playback, raeumt danach vollstaendig auf.
+**Architektur:** On-demand Playback. Bot joint nicht dauerhaft -- erstellt alles pro Playback, raeumt danach vollstaendig auf. Consumer-Erstellung wird vollstaendig dem SDK ueberlassen (`createStream()` erledigt das automatisch, wie im funktionierenden Referenz-Plugin `sharkord-music-bot`).
 
 **Ablauf:**
 
@@ -139,24 +139,30 @@ async function playAudio(
 4. `ctx.actions.voice.getListenInfo()` -> IP/announcedAddress
 5. `router.createPlainTransport()` mit `rtcpMux: true`, `comedia: true`, `enableSrtp: false`
 6. SSRC = `Math.floor(Math.random() * 1e9)` (zufaellig pro Playback)
-7. `transport.produce()` -> Opus-Producer (48kHz, stereo, payloadType 111)
-8. Volume-Berechnung: `settings.get("volume")` (0-100) -> `/100` -> ffmpeg `-af volume=X.XX`
-9. `Bun.spawn(["ffmpeg", ...])` -> MP3/MPEG decodieren -> libopus -> RTP an `rtp://{ip}:{port}?pkt_size=1200`
-   - ffmpeg Loglevel: `verbose` wenn debug=true, sonst `warning`
-   - stdout: `"ignore"`, stderr: `"pipe"`, stdin: `"ignore"`
-10. `ctx.actions.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`)
-11. Producer-Score-Monitoring via `producer.on("score", ...)`
-12. Debug-only: Test-Consumer erstellen (eigener PlainTransport + consume + resume) mit periodischem Stats-Logging (5s Intervall) und Router-Dump nach 3s
-13. `cleanup`-Funktion definiert: `clearInterval(consumerCheckInterval)`, `stream.remove()`, `producer.close()`, `transport.close()`
+7. **PayloadType dynamisch aufloesen:** `router.rtpCapabilities.codecs` durchsuchen nach `audio/opus` -> `preferredPayloadType` verwenden (Fallback auf 111 wenn nicht gefunden)
+8. `transport.produce()` -> Opus-Producer (48kHz, stereo, dynamischer payloadType, `parameters: { "minptime": 10, "useinbandfec": 1 }`)
+9. Volume-Berechnung: `settings.get("volume")` (0-100) -> `/100` -> ffmpeg `-af volume=X.XX`
+10. `Bun.spawn(["ffmpeg", ...])` -> MP3/MPEG decodieren -> libopus -> RTP an `rtp://{ip}:{port}?pkt_size=1200`
+    - Neue Flags: `-fflags +genpts`, `-vbr off`, `-frame_duration 20` (wie sharkord-music-bot)
+    - `-payload_type` verwendet dynamisch aufgeloesten PayloadType
+    - ffmpeg Loglevel: `verbose` wenn debug=true, sonst `warning`
+    - stdout: `"ignore"`, stderr: `"pipe"`, stdin: `"ignore"`
+11. `ctx.actions.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`)
+12. Producer-Score-Monitoring via `producer.on("score", ...)`
+13. `cleanup`-Funktion definiert: `stream.remove()`, `producer.close()`, `transport.close()`
 14. Session in `activeSessions` registrieren: `{ ffmpeg, cleanup }`
 15. ffmpeg stderr async auslesen und zeilenweise via `debugLog()` loggen
 16. `ffmpeg.exited.then(code => ...)`: Log-Eintrag, `activeSessions.delete(procKey)`, `cleanup()`
 
-### /hero-diagnose (interne Funktion, L809-L1220)
+**Hinweis (BUG-001 Fix):** Der zuvor vorhandene manuelle Consumer-Hack (~60 Zeilen), der ueber `router.transportsForTesting` eigene Consumer auf Client-Transports erstellte, wurde entfernt. Das SDK uebernimmt die Consumer-Erstellung automatisch ueber `createStream()`. Dies entspricht dem Verhalten des funktionierenden Referenz-Plugins `sharkord-music-bot`.
+
+### /hero-diagnose (interne Funktion, L784-L1201)
 
 **REQ:** REQ-DBG-008
 
 Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erstellt temporaere Ressourcen (Transport, Producer, ffmpeg, Stream) und inspiziert die gesamte Pipeline. Verwendet lokale Diagnostic-Interfaces (`DiagConsumerLike`, `DiagProducer`, `DiagTransport`, `DiagRouter`, `DiagListenInfo`) statt `any` fuer Typsicherheit.
+
+**Codec-Parameter:** Identisch zu `playAudio()` — dynamischer PayloadType vom Router, `parameters: { "minptime": 10, "useinbandfec": 1 }`, ffmpeg-Flags `-fflags +genpts`, `-vbr off`, `-frame_duration 20`.
 
 **7 Stages:**
 
@@ -164,8 +170,8 @@ Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erste
 |-------|------|-------------|
 | 0 | Pre-flight | `currentVoiceChannelId`-Check, ffmpeg-Verfuegbarkeit (`Bun.spawn(["ffmpeg", "-version"])`), aktive Channels auflisten |
 | 1 | Transport | `getRouter()`, `getListenInfo()`, `createPlainTransport()` erstellen. Bei Fehler: sofortiger Abbruch mit FAIL. |
-| 2 | Producer | `transport.produce()` mit Opus-Codec (48kHz, stereo, PT 111, zufaelliger SSRC). Prueft `producer.paused`. |
-| 3 | ffmpeg | Test-Audio-Datei oder Stille-Generator (`anullsrc`), 2s warten, Producer-Stats pruefen (packetCount > 0?). |
+| 2 | Producer | PayloadType dynamisch vom Router aufloesen (`rtpCapabilities.codecs` -> `audio/opus` -> `preferredPayloadType`, Fallback 111). `transport.produce()` mit Opus-Codec (48kHz, stereo, dynamischer PT, `minptime`/`useinbandfec`, zufaelliger SSRC). Prueft `producer.paused`. |
+| 3 | ffmpeg | Test-Audio-Datei oder Stille-Generator (`anullsrc`), ffmpeg-Flags inkl. `-fflags +genpts`, `-vbr off`, `-frame_duration 20`, dynamischer payload_type. 2s warten, Producer-Stats pruefen (packetCount > 0?). |
 | 4 | Stream + Consumer Discovery | `ctx.actions.voice.createStream()`, `producer.observer.on("newconsumer", ...)` Hook, 5s warten auf SDK-Consumer. Prueft Consumer-`paused`-Status. |
 | 5 | Router State Dump | `router.dump()`, Consumer-Zaehlung, `router.transportsForTesting` Inspektion, Consumer-Status (paused/resumed), Consumer-Stats und Score. |
 | 6 | Client Transport Deep Inspection | ICE-State (`completed`?), DTLS-State (`connected`?), `iceSelectedTuple`, Consumer outbound-rtp Stats (packetCount > 0?), vollstaendiger Transport-Dump. |
@@ -174,7 +180,7 @@ Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erste
 
 **Verdict:** Zaehlt alle `[FAIL]`-Eintraege. Bei 0 Failures: "All stages passed". Bei Failures: Liste der Fehler.
 
-### onUnload (L1251-L1253)
+### onUnload (L1233-L1235)
 
 Loggt `"Hero Introducer unloaded"`.
 
@@ -267,17 +273,19 @@ playAudio(channelId, userId, label, mp3Path)
   +- ListenInfo holen (getListenInfo)
   |
   +- PlainTransport erstellen (rtcpMux, comedia, kein SRTP)
-  +- Opus-Producer erstellen (48kHz, stereo, zufaelliger SSRC)
+  +- PayloadType dynamisch vom Router aufloesen (rtpCapabilities.codecs -> audio/opus)
+  +- Opus-Producer erstellen (48kHz, stereo, zufaelliger SSRC, minptime=10, useinbandfec=1)
   |
   +- Volume berechnen: settings.get("volume") / 100
   |
   +- Bun.spawn(ffmpeg) -> MP3/MPEG -> libopus -> RTP an Transport-Port
+  |   +- Flags: -fflags +genpts, -vbr off, -frame_duration 20
+  |   +- payload_type: dynamisch vom Router
   |   +- stderr: pipe -> async zeilenweise debugLog
   |
-  +- createStream() -> Channel-Stream exponieren
+  +- createStream() -> Channel-Stream exponieren (SDK erstellt Consumer automatisch)
   |
   +- Producer-Score-Monitoring
-  +- (Debug) Test-Consumer + periodische Stats
   |
   +- cleanup-Funktion: stream.remove(), producer.close(), transport.close()
   +- Session in activeSessions registrieren
@@ -439,7 +447,7 @@ bun build.ts
 
 | Problem | Beschreibung | Status |
 |---------|-------------|--------|
-| Audio nicht hoerbar | Die Server-seitige Audio-Pipeline funktioniert technisch (Producer Score 10, Consumer existiert, ffmpeg sendet RTP-Pakete), aber der Audio-Output ist fuer Clients im Voice-Channel nicht hoerbar. `/hero-diagnose` wurde zur Diagnose implementiert. | Wird untersucht |
+| Audio nicht hoerbar (BUG-001) | Fix angewendet: (1) Codec-Parameters `minptime`/`useinbandfec` hinzugefuegt, (2) PayloadType dynamisch vom Router aufgeloest statt hardcoded 111, (3) ffmpeg-Flags `-fflags +genpts`, `-vbr off`, `-frame_duration 20` ergaenzt, (4) manueller Consumer-Hack entfernt — SDK uebernimmt Consumer-Erstellung via `createStream()` (wie im funktionierenden Referenz-Plugin `sharkord-music-bot`). | Fix angewendet, Verifikation ausstehend |
 
 ---
 
@@ -518,4 +526,5 @@ bun build.ts
 | 2026-03-15 | Vollstaendige Aktualisierung: playAudio-Architektur (on-demand, Bun.spawn, activeSessions statt activeProcesses), resolveAudioFile-Funktion, volume-Setting, /hero-play-song Command, /hero-debug entfernt, Flows aktualisiert, bekannter Audio-Bug dokumentiert |
 | 2026-03-17 | Vollstaendige Aktualisierung: /hero-diagnose Command (7 Stages) hinzugefuegt, Zeilennummern aktualisiert (~1201 Zeilen), Test-Abdeckung erweitert (play-audio.test.ts: 8 Tests, play-audio-comparison.test.ts: 4 Tests), Lueckenanalyse aktualisiert, REQ-CFG-005 korrekt zugeordnet, Flow 7 (Diagnose) und Flow 8 (Build) hinzugefuegt |
 | 2026-03-17 | Test-Abdeckung aktualisiert: missing-coverage.test.ts (29 Tests) und server.test.ts (29 Tests, vorher faelschlich als 18 dokumentiert) aufgenommen. Gesamtzahl: 74 Tests in 5 Dateien. Lueckenanalyse vollstaendig ueberarbeitet — viele REQ-IDs jetzt durch missing-coverage.test.ts abgedeckt (REQ-CORE-002/003/005/006, REQ-CMD-001/002/003/010/013, REQ-CFG-001/002/003/004, REQ-DATA-001/002/004/007). |
-| 2026-03-18 | Code-Fixes reflektiert: `any` durch `unknown`/Diagnostic-Interfaces ersetzt (REQ-NF-001), `stream.remove()` in cleanup() ergaenzt, `ctx.error()` statt `debugLog()` bei fehlendem Voice-Channel (REQ-CORE-006), debugLog in allen 13 Command-Handlern (REQ-DBG-005). Zeilennummern aktualisiert (~1255 Zeilen). Tests: 76 in 5 Dateien (server.test.ts: 31, missing-coverage.test.ts: 29). |
+| 2026-03-18 | Code-Fixes reflektiert: `any` durch `unknown`/Diagnostic-Interfaces ersetzt (REQ-NF-001), `stream.remove()` in cleanup() ergaenzt, `ctx.error()` statt `debugLog()` bei fehlendem Voice-Channel (REQ-CORE-006), debugLog in allen 13 Command-Handlern (REQ-DBG-005). Tests: 76 in 5 Dateien (server.test.ts: 31, missing-coverage.test.ts: 29). |
+| 2026-03-18 | **BUG-001 Fix dokumentiert:** playAudio() und /hero-diagnose aktualisiert — Codec-Parameters (`minptime`, `useinbandfec`), dynamischer PayloadType vom Router, neue ffmpeg-Flags (`-fflags +genpts`, `-vbr off`, `-frame_duration 20`), manueller Consumer-Hack entfernt (~60 Zeilen). SDK uebernimmt Consumer-Erstellung via `createStream()`. Zeilennummern aktualisiert (~1237 Zeilen). Flow 2 aktualisiert. BUG-001 Status: Fix angewendet, Verifikation ausstehend. |

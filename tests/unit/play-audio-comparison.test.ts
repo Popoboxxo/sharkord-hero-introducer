@@ -64,7 +64,7 @@ const REFERENCE = {
     payloadType: 111,
     clockRate: 48000,
     channels: 2,
-    parameters: {},
+    parameters: { "minptime": 10, "useinbandfec": 1 },
     rtcpFeedback: [],
   },
   ffmpeg: {
