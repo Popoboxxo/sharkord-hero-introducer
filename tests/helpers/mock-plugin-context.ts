@@ -28,6 +28,7 @@ export interface MockProducer {
   on: ReturnType<typeof mock>;
   observer: { on: ReturnType<typeof mock> };
   getStats: ReturnType<typeof mock>;
+  resume: ReturnType<typeof mock>;
 }
 
 export interface MockPlainTransport {
@@ -125,6 +126,7 @@ export function createMockPluginContext(
     on: mock(() => {}),
     observer: { on: mock(() => {}) },
     getStats: mock(async () => [{ packetCount: 0, byteCount: 0, score: 0 }]),
+    resume: mock(async () => { mockProducer.paused = false; }),
   };
 
   const mockTransport: MockPlainTransport = {
@@ -136,7 +138,7 @@ export function createMockPluginContext(
 
   const mockRouter: MockRouter = {
     createPlainTransport: mock(async () => mockTransport),
-    rtpCapabilities: { codecs: [{ mimeType: "audio/opus", payloadType: 111, clockRate: 48000, channels: 2 }] },
+    rtpCapabilities: { codecs: [{ mimeType: "audio/opus", preferredPayloadType: 111, clockRate: 48000, channels: 2 }] },
     dump: mock(async () => ({
       transportIds: ["mock-transport-id"],
       mapProducerIdConsumerIds: [{ key: mockProducer.id, values: [mockConsumer.id] }],

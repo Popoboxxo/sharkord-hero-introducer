@@ -230,30 +230,16 @@ const onLoad = async (ctx: PluginContext) => {
 
     const ssrc = Math.floor(Math.random() * 1e9);
 
-    // Resolve payloadType from router's rtpCapabilities (like music-bot does)
-    // Falls back to 111 if not found
-    const routerCodecs = (router.rtpCapabilities?.codecs ?? []) as Array<{
-      mimeType?: string;
-      preferredPayloadType?: number;
-    }>;
-    const opusCodec = routerCodecs.find(
-      (c) => c.mimeType?.toLowerCase() === "audio/opus",
-    );
-    const payloadType = opusCodec?.preferredPayloadType ?? 111;
-    debugLog(`Resolved payloadType=${payloadType} from router (opus codec found: ${!!opusCodec})`);
-
+    // Match sharkord-music-bot exactly: hardcoded payloadType 111, empty parameters
     const producer = await transport.produce({
       kind: "audio",
       rtpParameters: {
         codecs: [{
           mimeType: "audio/opus",
-          payloadType,
+          payloadType: 111,
           clockRate: 48000,
           channels: 2,
-          parameters: {
-            "minptime": 10,
-            "useinbandfec": 1,
-          },
+          parameters: {},
           rtcpFeedback: [],
         }],
         encodings: [{ ssrc }],
@@ -272,24 +258,22 @@ const onLoad = async (ctx: PluginContext) => {
     const volumeDecimal = Math.max(0, Math.min(100, volumePercent)) / 100;
     debugLog(`Spawning ffmpeg → rtp://${rtpTargetHost}:${rtpPort} (SSRC=${ssrc}, volume=${volumePercent}%/${volumeDecimal})`);
 
+    // ffmpeg args matching sharkord-music-bot exactly
     const ffmpegArgs = [
       "ffmpeg",
       "-hide_banner",
       "-nostats",
       "-loglevel", settings.get("debug") ? "verbose" : "warning",
       "-re",
-      "-fflags", "+genpts",
       "-i", mp3Path,
       "-vn",
       "-af", `volume=${volumeDecimal}`,
       "-c:a", "libopus",
       "-ar", "48000",
       "-ac", "2",
-      "-b:a", "128k",
-      "-vbr", "off",
-      "-frame_duration", "20",
+      "-b:a", "192k",
       "-application", "audio",
-      "-payload_type", String(payloadType),
+      "-payload_type", "111",
       "-ssrc", String(ssrc),
       "-f", "rtp",
       `rtp://${rtpTargetHost}:${rtpPort}?pkt_size=1200`,
@@ -304,11 +288,12 @@ const onLoad = async (ctx: PluginContext) => {
     });
     debugLog(`ffmpeg spawned — PID=${ffmpeg.pid}`);
 
-    // 3. Register stream with Sharkord (immediately after spawn, no delay)
+    // 3. Register stream with Sharkord (matching sharkord-music-bot exactly)
     const stream = ctx.actions.voice.createStream({
+      key: `hero-intro-${channelId}-${userId}`,
       channelId,
       title: `Hero Intro: ${label}`,
-      key: `hero-intro-${channelId}-${userId}`,
+      avatarUrl: "https://i.imgur.com/uVBNUK9.png",
       producers: { audio: producer },
     });
     debugLog(`Stream registered`);
@@ -317,6 +302,23 @@ const onLoad = async (ctx: PluginContext) => {
     producer.on("score", (score: unknown) => {
       debugLog(`Producer score: ${JSON.stringify(score)}`);
     });
+
+    // 5. Health-check: verify RTP data flows after 5s
+    setTimeout(async () => {
+      try {
+        const stats = await producer.getStats();
+        const s = (stats as Array<{ packetCount?: number; byteCount?: number; bytesReceived?: number; packetsReceived?: number }>)[0];
+        const pkts = s?.packetCount ?? s?.packetsReceived ?? 0;
+        const bytes = s?.byteCount ?? s?.bytesReceived ?? 0;
+        if (pkts > 0) {
+          debugLog(`Health-check OK: ${pkts} packets, ${bytes} bytes received by producer`);
+        } else {
+          ctx.log(`[WARN] Health-check: producer received 0 RTP packets after 5s — audio may not be audible`);
+        }
+      } catch {
+        debugLog(`Health-check: producer.getStats() failed (producer may be closed)`);
+      }
+    }, 5000);
 
     // Cleanup function — tears down transport, producer, stream
     const cleanup = () => {
@@ -930,7 +932,8 @@ const onLoad = async (ctx: PluginContext) => {
       const ffmpegArgs = testAudioPath
         ? [
           "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
-          "-re", "-fflags", "+genpts", "-i", testAudioPath, "-vn", "-t", "5",
+          "-re", "-fflags", "+genpts", "-probesize", "30000000", "-analyzeduration", "30000000",
+          "-i", testAudioPath, "-vn", "-t", "5",
           "-af", "volume=0.25",
           "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
           "-vbr", "off", "-frame_duration", "20",
@@ -939,7 +942,7 @@ const onLoad = async (ctx: PluginContext) => {
         ]
         : [
           "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
-          "-re", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "3",
+          "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "3",
           "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
           "-vbr", "off", "-frame_duration", "20",
           "-application", "audio", "-payload_type", String(diagPayloadType), "-ssrc", String(ssrc),

@@ -177,7 +177,7 @@ describe("playAudio pipeline", () => {
     expect(codec.payloadType).toBe(111);
     expect(codec.clockRate).toBe(48000);
     expect(codec.channels).toBe(2);
-    expect(codec.parameters).toEqual({ "minptime": 10, "useinbandfec": 1 });
+    expect(codec.parameters).toEqual({});
     expect(codec.rtcpFeedback).toEqual([]);
   });
 
@@ -220,7 +220,7 @@ describe("playAudio pipeline", () => {
     expect(cmd).toContain("libopus");
     expect(cmd).toContain("48000");
     expect(cmd).toContain("2");
-    expect(cmd).toContain("128k");
+    expect(cmd).toContain("192k");
     expect(cmd).toContain("audio");
     expect(cmd).toContain("111");
     expect(cmd).toContain("rtp");

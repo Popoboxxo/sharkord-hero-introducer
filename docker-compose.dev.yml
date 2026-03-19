@@ -10,6 +10,19 @@
 # After plugin changes:
 #   bun run build
 #   docker compose -f docker-compose.dev.yml restart sharkord
+#
+# IMPORTANT – Audio will NOT work without this config!
+#   After first start, edit the Sharkord config to set announcedAddress:
+#     docker exec -u root hero-introducer-dev python3 -c "
+#       c=open('/home/bun/.config/sharkord/config.ini').read()
+#       c=c.replace('announcedAddress=\n','announcedAddress=127.0.0.1\n')
+#       open('/home/bun/.config/sharkord/config.ini','w').write(c)"
+#     docker compose -f docker-compose.dev.yml restart sharkord
+#
+#   For local testing:  announcedAddress=127.0.0.1
+#   For remote access:  announcedAddress=<your-public-ip>
+#   Without this, WebRTC ICE candidates point to the unreachable container IP
+#   and no audio consumer is created (BUG-001).
 # ---------------------------------------------------------------------------
 
 services:
