@@ -1,4 +1,5 @@
 import type { PluginContext, TInvokerContext } from "@sharkord/plugin-sdk";
+import { Database } from "bun:sqlite";
 import fs from "fs/promises";
 import path from "path";
 
@@ -178,11 +179,63 @@ const onLoad = async (ctx: PluginContext) => {
   interface PlaybackSession {
     ffmpeg: { kill(signal?: number): void };
     cleanup: () => void;
+    done: Promise<void>;
   }
   const activeSessions = new Map<string, PlaybackSession>();
 
   /** Set of currently active voice channel IDs. */
   const activeChannels = new Set<number>();
+
+  // ---------------------------------------------------------------------------
+  // Playback queue — ensures songs play sequentially per channel
+  // ---------------------------------------------------------------------------
+
+  interface QueueEntry {
+    channelId: number;
+    userId: number;
+    label: string;
+    mp3Path: string;
+  }
+
+  /** Per-channel playback queue. */
+  const playbackQueues = new Map<number, QueueEntry[]>();
+  /** Whether a channel is currently processing its queue. */
+  const queueProcessing = new Set<number>();
+
+  /** Enqueue a playback request and start processing if not already running. */
+  function enqueuePlayback(entry: QueueEntry): void {
+    let queue = playbackQueues.get(entry.channelId);
+    if (!queue) {
+      queue = [];
+      playbackQueues.set(entry.channelId, queue);
+    }
+    queue.push(entry);
+    debugLog(`Queue: enqueued "${entry.label}" for channel ${entry.channelId} (queue length: ${queue.length})`);
+    processQueue(entry.channelId);
+  }
+
+  /** Process the next item in a channel's queue. */
+  async function processQueue(channelId: number): Promise<void> {
+    if (queueProcessing.has(channelId)) return; // already processing
+    const queue = playbackQueues.get(channelId);
+    if (!queue || queue.length === 0) return;
+
+    queueProcessing.add(channelId);
+
+    while (queue.length > 0) {
+      const entry = queue.shift()!;
+      debugLog(`Queue: playing "${entry.label}" in channel ${channelId} (${queue.length} remaining)`);
+      try {
+        await playAudioAndWait(channelId, entry.userId, entry.label, entry.mp3Path);
+      } catch (err) {
+        ctx.error(`Queue: playback failed for "${entry.label}": ${String(err)}`);
+      }
+    }
+
+    queueProcessing.delete(channelId);
+    playbackQueues.delete(channelId);
+    debugLog(`Queue: channel ${channelId} queue empty`);
+  }
 
   /** Cache of userId → username, persisted to disk, populated from user:joined events. */
   const userCacheData = await readJsonFile<Record<string, string>>(userCacheFile, {});
@@ -328,8 +381,6 @@ const onLoad = async (ctx: PluginContext) => {
       debugLog(`Cleaned up audio resources for ${procKey}`);
     };
 
-    activeSessions.set(procKey, { ffmpeg, cleanup });
-
     // Read ffmpeg stderr in background for debug logging
     if (ffmpeg.stderr) {
       (async () => {
@@ -354,12 +405,31 @@ const onLoad = async (ctx: PluginContext) => {
     }
 
     // Wait for ffmpeg to finish, then clean up
-    ffmpeg.exited.then((code) => {
+    const done = ffmpeg.exited.then((code) => {
       debugLog(`ffmpeg[${ffmpeg.pid}] exited — code=${code ?? "null"}`);
       ctx.log(`Playback for "${label}" finished (ffmpeg exit code ${code ?? "null"})`);
       activeSessions.delete(procKey);
       cleanup();
     });
+
+    activeSessions.set(procKey, { ffmpeg, cleanup, done });
+  }
+
+  /**
+   * Play audio and wait for completion. Used by the queue to ensure sequential playback.
+   */
+  async function playAudioAndWait(
+    channelId: number,
+    userId: number,
+    label: string,
+    mp3Path: string,
+  ): Promise<void> {
+    await playAudio(channelId, userId, label, mp3Path);
+    const procKey = `${channelId}-${userId}`;
+    const session = activeSessions.get(procKey);
+    if (session) {
+      await session.done;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -381,18 +451,38 @@ const onLoad = async (ctx: PluginContext) => {
         activeSessions.delete(key);
       }
     }
+    // Clear the playback queue for this channel
+    playbackQueues.delete(channelId);
+    queueProcessing.delete(channelId);
     debugLog(`Voice channel ${channelId} closed (remaining: ${activeChannels.size})`);
   });
 
   // ---------------------------------------------------------------------------
-  // User join handler – trigger intro music
+  // User join handler – cache username (BUG-002 fix)
+  // ---------------------------------------------------------------------------
+  //
+  // IMPORTANT: The `user:joined` event fires when a user logs into the SERVER,
+  // NOT when they join a voice channel. The Sharkord Plugin SDK does not
+  // currently expose a `voice:user_joined` event (see FEATURE_REQUEST_VOICE_EVENTS.md).
+  //
+  // Previous behaviour (BUG-002): The handler blindly picked the first active
+  // voice channel and played the intro there — even if the user was not in any
+  // voice channel at all. This caused the bot to join empty channels.
+  //
+  // Current behaviour: We only use this event to cache userId → username.
+  // Automatic intros are DISABLED until the SDK exposes voice join events.
+  // Users can trigger their intro manually via /hero-play-me.
+  //
+  // WORKAROUND: /hero-play-me plays the user's intro in their current voice
+  // channel (using ctx.currentVoiceChannelId from the invoker context, which
+  // is reliable). See also /hero-play and /hero-play-song.
   // ---------------------------------------------------------------------------
 
-  /** Delay (ms) before playing the intro after a user connects to the server. */
-  const INTRO_DELAY_MS = 5_000;
+  ctx.events.on("user:joined", async (payload: Record<string, unknown>) => {
+    const userId = payload.userId as number;
+    const username = payload.username as string;
 
-  ctx.events.on("user:joined", async ({ userId, username }) => {
-    debugLog(`>>> user:joined event — userId=${userId}, username="${username}"`);
+    debugLog(`>>> user:joined event — userId=${userId}, username="${username}" (server login, NOT voice join)`);
 
     // Cache the userId → username mapping for /hero-set-me (persist to disk)
     userNameCache.set(userId, username);
@@ -400,66 +490,11 @@ const onLoad = async (ctx: PluginContext) => {
     await writeJsonFile(userCacheFile, cacheObj);
     debugLog(`User cache updated: userId=${userId} → "${username}" (total cached: ${userNameCache.size})`);
 
-    const enabled = settings.get("enabled");
-    if (!enabled) {
-      debugLog(`Plugin disabled – skipping intro for "${username}" (userId=${userId})`);
-      return;
-    }
-
-    // Load the music map (keyed by displayName / username)
-    const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-    const mapKeys = Object.keys(musicMap);
-    debugLog(`MusicMap loaded — ${mapKeys.length} entries: [${mapKeys.join(", ")}]`);
-
-    const audioFileName = musicMap[username];
-
-    if (!audioFileName) {
-      debugLog(`No intro configured for user "${username}" (userId=${userId})`);
-      return;
-    }
-
-    debugLog(`Match found: "${username}" → "${audioFileName}"`);
-
-    // Check once-per-day setting
-    const oncePerDay = settings.get("oncePerDay");
-    if (oncePerDay) {
-      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
-      const lastGreet = dailyGreets[String(userId)];
-      if (lastGreet === todayISO()) {
-        debugLog(`User "${username}" already greeted today – skipping`);
-        return;
-      }
-    }
-
-    // Verify the audio file exists
-    const audioPath = path.join(musicDir, audioFileName);
-    try {
-      await fs.access(audioPath);
-    } catch {
-      ctx.error(`Intro file not found for user ${username}: ${audioPath}`);
-      return;
-    }
-
-    // Wait before playing so the user has time to join a voice channel
-    debugLog(`Waiting ${INTRO_DELAY_MS}ms before playing intro for "${username}"...`);
-    await new Promise((resolve) => setTimeout(resolve, INTRO_DELAY_MS));
-
-    const channelId = [...activeChannels][0];
-    if (channelId === undefined) {
-      ctx.error(`No active voice channel – cannot play intro for "${username}"`);
-      return;
-    }
-
-    debugLog(`Starting playback for "${username}" in channel ${channelId}...`);
-    await playAudio(channelId, userId, username, audioPath);
-
-    // Record the greeting date
-    if (oncePerDay) {
-      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
-      dailyGreets[String(userId)] = todayISO();
-      await writeJsonFile(dailyGreetsFile, dailyGreets);
-      debugLog(`Recorded greeting for userId=${userId} on ${todayISO()}`);
-    }
+    // NOTE: No automatic intro playback here.
+    // The SDK's user:joined event does not indicate a voice channel join.
+    // Automatic intros require a voice:user_joined event (feature request pending).
+    // Until then, users can use /hero-play-me to trigger their intro manually.
+    debugLog(`Auto-intro skipped for "${username}" — no voice:user_joined event available (BUG-002 fix)`);
   });
 
   // ---------------------------------------------------------------------------
@@ -673,7 +708,7 @@ const onLoad = async (ctx: PluginContext) => {
         return "Could not determine your user ID.";
       }
       if (!voiceChannelId) {
-        return "You are not in a voice channel. Join one first, then try again.";
+        return "You must be in a voice channel to use this command.";
       }
 
       const invokerName = userNameCache.get(invokerUserId);
@@ -722,7 +757,7 @@ const onLoad = async (ctx: PluginContext) => {
       debugLog(`/hero-play called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, displayName="${displayName}"`);
 
       if (!voiceChannelId) {
-        return "You are not in a voice channel. Join one first, then try again.";
+        return "You must be in a voice channel to use this command.";
       }
 
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
@@ -769,7 +804,7 @@ const onLoad = async (ctx: PluginContext) => {
         return "Please provide a song name. Usage: /hero-play-song <songName>";
       }
       if (!voiceChannelId) {
-        return "You are not in a voice channel. Join one first, then try again.";
+        return "You must be in a voice channel to use this command.";
       }
 
       const resolved = await resolveAudioFile(songName);
@@ -780,6 +815,154 @@ const onLoad = async (ctx: PluginContext) => {
       const audioPath = path.join(musicDir, resolved.fileName);
       await playAudio(voiceChannelId, invokerUserId ?? 0, resolved.fileName, audioPath);
       return `Playing: ${resolved.fileName}`;
+    },
+  });
+
+  // /hero-reset-me – reset daily greet counter so the intro plays again
+  ctx.commands.register({
+    name: "hero-reset-me",
+    description: "Reset your daily greeting counter so your intro plays again today.",
+    args: [],
+    async executes(invokerCtx: TInvokerContext) {
+      const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
+      debugLog(`/hero-reset-me called — userId=${invokerUserId}`);
+
+      if (invokerUserId === undefined) {
+        return "Could not determine your user ID.";
+      }
+
+      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
+      const lastGreet = dailyGreets[String(invokerUserId)];
+
+      if (!lastGreet) {
+        return "You have no daily greeting entry to reset.";
+      }
+
+      delete dailyGreets[String(invokerUserId)];
+      await writeJsonFile(dailyGreetsFile, dailyGreets);
+      const invokerName = userNameCache.get(invokerUserId) ?? `userId=${invokerUserId}`;
+      debugLog(`Daily greet reset for ${invokerName} (userId=${invokerUserId})`);
+      return `Your daily greeting counter has been reset. Your intro will play again on your next join.`;
+    },
+  });
+
+  // REQ-CMD-017
+  // /hero-search-music – search Sharkord SQLite DB for audio attachments and copy them to music dir
+  ctx.commands.register({
+    name: "hero-search-music",
+    description: "Search chat attachments for audio files and add them to the music library.",
+    args: [],
+    async executes(invokerCtx: TInvokerContext) {
+      debugLog(`/hero-search-music called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
+
+      const dbPath = path.join(ctx.path, "..", "..", "db.sqlite");
+      const publicDir = path.join(ctx.path, "..", "..", "public");
+
+      debugLog(`hero-search-music: dbPath=${dbPath}, publicDir=${publicDir}, musicDir=${musicDir}`);
+
+      // Row type returned from the files query (DB uses snake_case column names)
+      interface AudioFileRow {
+        name: string;
+        original_name: string | null;
+        mime_type: string;
+        extension: string;
+      }
+
+      let rows: AudioFileRow[];
+
+      try {
+        const db = new Database(dbPath, { readonly: true });
+        rows = db.query(`
+          SELECT DISTINCT f.name, f.original_name, f.mime_type, f.extension
+          FROM files f
+          INNER JOIN message_files mf ON mf.fileId = f.id
+          WHERE f.mime_type IN ('audio/mpeg', 'audio/mp3')
+             OR LOWER(f.extension) IN ('.mp3', '.mpeg', 'mp3', 'mpeg')
+        `).all() as AudioFileRow[];
+        db.close();
+        debugLog(`hero-search-music: query returned ${rows.length} row(s)`);
+      } catch (err) {
+        const errorMsg = `Failed to read database at "${dbPath}": ${String(err)}`;
+        ctx.error(`/hero-search-music: ${errorMsg}`);
+        return errorMsg;
+      }
+
+      let copied = 0;
+      let skipped = 0;
+      const copiedFiles: string[] = [];
+      const skippedFiles: string[] = [];
+
+      for (const row of rows) {
+        const destName = (row.original_name && row.original_name.trim().length > 0)
+          ? row.original_name.trim()
+          : row.name;
+
+        const srcPath = path.join(publicDir, row.name);
+        const destPath = path.join(musicDir, destName);
+
+        debugLog(`hero-search-music: processing row name="${row.name}", original_name="${row.original_name ?? "null"}", destName="${destName}"`);
+
+        // Check if destination already exists — skip if so
+        try {
+          await fs.access(destPath);
+          // File exists → skip
+          debugLog(`hero-search-music: skipping "${destName}" (already exists in music dir)`);
+          skipped++;
+          skippedFiles.push(destName);
+          continue;
+        } catch {
+          // File does not exist → proceed with copy
+        }
+
+        // Verify source file exists
+        const srcFile = Bun.file(srcPath);
+        const srcExists = await srcFile.exists();
+        if (!srcExists) {
+          ctx.log(`[WARN] hero-search-music: source file not found, skipping — "${srcPath}"`);
+          debugLog(`hero-search-music: source not found: ${srcPath}`);
+          skipped++;
+          skippedFiles.push(`${destName} (source missing: ${row.name})`);
+          continue;
+        }
+
+        // Copy file
+        try {
+          await Bun.write(destPath, srcFile);
+          debugLog(`hero-search-music: copied "${row.name}" → "${destName}"`);
+          copied++;
+          copiedFiles.push(destName);
+        } catch (err) {
+          ctx.error(`hero-search-music: failed to copy "${row.name}" → "${destName}": ${String(err)}`);
+          skipped++;
+          skippedFiles.push(`${destName} (copy error: ${String(err)})`);
+        }
+      }
+
+      // Build result summary
+      const lines: string[] = [
+        "Search complete.",
+        `Found: ${rows.length} audio file(s) in chat attachments`,
+        `Copied: ${copied}`,
+        `Skipped (already exists): ${skipped}`,
+      ];
+
+      if (copiedFiles.length > 0) {
+        lines.push("", "Copied files:");
+        for (const f of copiedFiles) {
+          lines.push(`  + ${f}`);
+        }
+      }
+
+      if (skippedFiles.length > 0) {
+        lines.push("", "Skipped files:");
+        for (const f of skippedFiles) {
+          lines.push(`  - ${f}`);
+        }
+      }
+
+      const result = lines.join("\n");
+      debugLog(`hero-search-music: done — ${result}`);
+      return result;
     },
   });
 
@@ -878,13 +1061,8 @@ const onLoad = async (ctx: PluginContext) => {
 
       // --- Stage 2: Producer ---
       const ssrc = Math.floor(Math.random() * 1e9);
-      // Resolve payloadType from router (same logic as playAudio)
-      const diagRouterCodecs = ((router as unknown as { rtpCapabilities?: { codecs?: Array<{ mimeType?: string; preferredPayloadType?: number }> } }).rtpCapabilities?.codecs ?? []);
-      const diagOpusCodec = diagRouterCodecs.find(
-        (c: { mimeType?: string }) => c.mimeType?.toLowerCase() === "audio/opus",
-      );
-      const diagPayloadType = diagOpusCodec?.preferredPayloadType ?? 111;
-      info("Stage 2", `Resolved payloadType=${diagPayloadType} from router`);
+      // Use hardcoded payloadType 111 and empty parameters (matching playAudio exactly)
+      info("Stage 2", `Using payloadType=111 (matching playAudio pipeline)`);
 
       let producer: DiagProducer;
       try {
@@ -893,13 +1071,10 @@ const onLoad = async (ctx: PluginContext) => {
           rtpParameters: {
             codecs: [{
               mimeType: "audio/opus",
-              payloadType: diagPayloadType,
+              payloadType: 111,
               clockRate: 48000,
               channels: 2,
-              parameters: {
-                "minptime": 10,
-                "useinbandfec": 1,
-              },
+              parameters: {},
               rtcpFeedback: [],
             }],
             encodings: [{ ssrc }],
@@ -929,23 +1104,21 @@ const onLoad = async (ctx: PluginContext) => {
         info("Stage 3", "No audio file found — generating 3s silence via ffmpeg");
       }
 
+      // ffmpeg args matching playAudio pipeline exactly
       const ffmpegArgs = testAudioPath
         ? [
           "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
-          "-re", "-fflags", "+genpts", "-probesize", "30000000", "-analyzeduration", "30000000",
-          "-i", testAudioPath, "-vn", "-t", "5",
+          "-re", "-i", testAudioPath, "-vn", "-t", "5",
           "-af", "volume=0.25",
-          "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
-          "-vbr", "off", "-frame_duration", "20",
-          "-application", "audio", "-payload_type", String(diagPayloadType), "-ssrc", String(ssrc),
+          "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "192k",
+          "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),
           "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
         ]
         : [
           "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
           "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "3",
-          "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "128k",
-          "-vbr", "off", "-frame_duration", "20",
-          "-application", "audio", "-payload_type", String(diagPayloadType), "-ssrc", String(ssrc),
+          "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "192k",
+          "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),
           "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
         ];
 

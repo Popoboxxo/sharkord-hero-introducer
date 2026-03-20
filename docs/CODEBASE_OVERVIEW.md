@@ -1,6 +1,6 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 18. Maerz 2026
+> **Stand:** 20. Maerz 2026
 > **Version:** 0.1.0
 
 ---
@@ -9,7 +9,7 @@
 
 | Datei | Zeilen | Rolle |
 |-------|--------|-------|
-| `src/server.ts` | ~1237 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Diagnose |
+| `src/server.ts` | ~1334 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Queue, Diagnose |
 | `src/client.ts` | 2 | Leerer Client-Entry-Point (kein UI) |
 | `build.ts` | ~62 | Bun Build-Script (Server + Client + package.json kopieren) |
 
@@ -24,7 +24,8 @@
 | `MusicMap` | `Record<string, string>` — displayName -> audioFileName (.mp3 oder .mpeg) | REQ-DATA-001 |
 | `DailyGreets` | `Record<string, string>` — userId -> ISO-Datum `"YYYY-MM-DD"` | REQ-DATA-002 |
 | `ResolveResult` | `{ ok: true; fileName: string } \| { ok: false; message: string }` — Ergebnis der flexiblen Dateinamen-Aufloesung | REQ-CMD-004, REQ-CMD-009, REQ-CMD-013 |
-| `PlaybackSession` | `{ ffmpeg: { kill(signal?: number): void }; cleanup: () => void }` — Laufende Playback-Session (Interface, in onLoad-Closure definiert) | REQ-CORE-004, REQ-CORE-008 |
+| `PlaybackSession` | `{ ffmpeg: { kill(signal?: number): void }; cleanup: () => void; done: Promise<void> }` — Laufende Playback-Session (Interface, in onLoad-Closure definiert). `done` resolved wenn ffmpeg beendet ist — wird von `playAudioAndWait()` genutzt. | REQ-CORE-004, REQ-CORE-008 |
+| `QueueEntry` | `{ channelId: number; userId: number; label: string; mp3Path: string }` — Eintrag in der per-Channel-Playback-Queue (Interface, in onLoad-Closure definiert) | REQ-CORE-004 |
 
 ### Konstanten
 
@@ -66,6 +67,10 @@
 |----------|----------|-------------|-----|
 | `debugLog` | `(message: string) => void` | Loggt nur wenn `debug=true`, mit `[DEBUG]` Prefix via `ctx.log()` | REQ-DBG-001 |
 | `resolveAudioFile` | `(input: string) => Promise<ResolveResult>` | Flexible Dateinamen-Aufloesung im music-Verzeichnis: mit/ohne Endung, case-insensitive, Duplikat-Erkennung. Wird von `/hero-set`, `/hero-set-me` und `/hero-play-song` verwendet. | REQ-CMD-004, REQ-CMD-009, REQ-CMD-013 |
+| `enqueuePlayback` | `(entry: QueueEntry) => void` | Haengt einen Playback-Eintrag in die per-Channel-Queue und startet Queue-Verarbeitung falls noch nicht aktiv. | REQ-CORE-004 |
+| `processQueue` | `(channelId: number) => Promise<void>` | Verarbeitet die Queue eines Channels sequentiell: pro Eintrag `playAudioAndWait()` aufrufen. Verhindert doppelte Ausfuehrung via `queueProcessing`-Guard. Loescht Queue und Processing-State wenn leer. | REQ-CORE-004 |
+| `playAudio` | `(channelId: number, userId: number, label: string, mp3Path: string) => Promise<void>` | Erstellt PlainTransport + Producer, spawnt ffmpeg, registriert Stream. Asynchron — returned nach Setup, Cleanup erfolgt nach ffmpeg-Exit via `ffmpeg.exited`. | REQ-CORE-004, REQ-CORE-006, REQ-CORE-007, REQ-CORE-008 |
+| `playAudioAndWait` | `(channelId: number, userId: number, label: string, mp3Path: string) => Promise<void>` | Wrapper um `playAudio()` der zusaetzlich `session.done` awaitet — wartet also bis ffmpeg vollstaendig beendet ist. Wird von `processQueue()` fuer sequentiellen Betrieb genutzt. | REQ-CORE-004 |
 
 **resolveAudioFile Ablauf (L120-L171):**
 1. Alle Dateien im music-Verzeichnis lesen, nach unterstuetzten Endungen filtern
@@ -80,8 +85,10 @@
 
 | Variable | Typ | Zweck |
 |----------|-----|-------|
-| `activeSessions` | `Map<string, PlaybackSession>` | Laufende Playback-Sessions, keyed by `"channelId-userId"`. PlaybackSession enthaelt `ffmpeg` (mit `kill()`-Methode) und `cleanup`-Funktion. |
+| `activeSessions` | `Map<string, PlaybackSession>` | Laufende Playback-Sessions, keyed by `"channelId-userId"`. PlaybackSession enthaelt `ffmpeg` (mit `kill()`-Methode), `cleanup`-Funktion und `done: Promise<void>`. |
 | `activeChannels` | `Set<number>` | Aktive Voice-Channel-IDs |
+| `playbackQueues` | `Map<number, QueueEntry[]>` | Per-Channel-Warteschlange fuer sequentielle Playback-Verarbeitung. Key = channelId. |
+| `queueProcessing` | `Set<number>` | Set der channelIds deren Queue gerade verarbeitet wird. Verhindert parallele Queue-Verarbeitung pro Channel. |
 | `userNameCache` | `Map<number, string>` | userId -> username Cache, persistiert zu `data/user-cache.json`. Beim Start aus Datei geladen, bei jedem `user:joined` Event aktualisiert und auf Disk geschrieben. |
 
 **Startup-Logging:** Beim Laden wird die User-Cache-Groesse geloggt (`User cache loaded: N entries`).
@@ -91,8 +98,8 @@
 | Event | Handler-Logik | REQ |
 |-------|--------------|-----|
 | `voice:runtime_initialized` | `activeChannels.add(channelId)`, `debugLog()` | REQ-CORE-005, REQ-DBG-004 |
-| `voice:runtime_closed` | `activeChannels.delete(channelId)`, alle `activeSessions` fuer diesen Channel aufraumen (kill + cleanup + delete), `debugLog()` | REQ-CORE-005, REQ-CORE-007, REQ-DBG-004 |
-| `user:joined` | Intro-Logik: `userNameCache` aktualisieren + persistieren -> enabled-Check -> MusicMap-Lookup -> oncePerDay-Check -> Datei-Existenz -> `INTRO_DELAY_MS` warten -> erster aktiver Channel -> `playAudio()` -> DailyGreets speichern. `debugLog()` an vielen Stellen. | REQ-CORE-001 bis REQ-CORE-003, REQ-CFG-001, REQ-CFG-002, REQ-DBG-002, REQ-DBG-006 |
+| `voice:runtime_closed` | `activeChannels.delete(channelId)`, alle `activeSessions` fuer diesen Channel aufraumen (kill + cleanup + delete), `playbackQueues.delete(channelId)`, `queueProcessing.delete(channelId)`, `debugLog()` | REQ-CORE-005, REQ-CORE-007, REQ-DBG-004 |
+| `user:joined` | Intro-Logik: `userNameCache` aktualisieren + persistieren -> enabled-Check -> MusicMap-Lookup -> oncePerDay-Check -> Datei-Existenz -> `INTRO_DELAY_MS` warten -> erster aktiver Channel aus `activeChannels` (kein Mitglieder-Check — BUG-002) -> DailyGreets speichern -> `enqueuePlayback()`. `debugLog()` an vielen Stellen. | REQ-CORE-001 bis REQ-CORE-003, REQ-CFG-001, REQ-CFG-002, REQ-DBG-002, REQ-DBG-006 |
 
 #### Commands
 
@@ -109,6 +116,7 @@
 | `/hero-play-me` | -- | Spielt das eigene Intro des aufrufenden Users ab. Nutzt `invokerCtx.userId` -> `userNameCache` -> MusicMap-Lookup. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-011 |
 | `/hero-play` | `displayName: string` | Spielt das Intro einer anderen Person ab. MusicMap-Lookup ueber `displayName`. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-012 |
 | `/hero-play-song` | `songName: string` | Spielt eine beliebige Audio-Datei aus dem music-Verzeichnis. Nutzt `resolveAudioFile()` fuer flexible Aufloesung. Spielt im Channel von `invokerCtx.currentVoiceChannelId`. | REQ-CMD-013 |
+| `/hero-reset-me` | -- | Loescht den DailyGreets-Eintrag des aufrufenden Users, sodass das Intro am selben Tag erneut gespielt wird. Nutzt `invokerCtx.userId`. | REQ-CMD-015 |
 | `/hero-diagnose` | -- | Fuehrt vollstaendige Audio-Pipeline-Diagnose durch (7 Stages, PASS/FAIL Report). Nutzt `invokerCtx.currentVoiceChannelId`. | REQ-DBG-008 |
 | `/hero-dump-context` | `testArg?: string` | Dumpt alle Command-Parameter als JSON ins Server-Log und zeigt sie dem Aufrufer | REQ-CMD-010 |
 
@@ -116,7 +124,7 @@ Abschliessend: `ctx.ui.enable()` (REQ-CFG-003), `ctx.log("Hero Introducer ready"
 
 **Hinweis:** `/hero-debug` existiert nicht mehr. Der Debug-Modus wird ausschliesslich ueber die Settings-UI gesteuert (REQ-CFG-004).
 
-### playAudio (interne Funktion, L201-L361)
+### playAudio (interne Funktion, L253-L415)
 
 ```typescript
 async function playAudio(
@@ -139,30 +147,45 @@ async function playAudio(
 4. `ctx.actions.voice.getListenInfo()` -> IP/announcedAddress
 5. `router.createPlainTransport()` mit `rtcpMux: true`, `comedia: true`, `enableSrtp: false`
 6. SSRC = `Math.floor(Math.random() * 1e9)` (zufaellig pro Playback)
-7. **PayloadType dynamisch aufloesen:** `router.rtpCapabilities.codecs` durchsuchen nach `audio/opus` -> `preferredPayloadType` verwenden (Fallback auf 111 wenn nicht gefunden)
-8. `transport.produce()` -> Opus-Producer (48kHz, stereo, dynamischer payloadType, `parameters: { "minptime": 10, "useinbandfec": 1 }`)
-9. Volume-Berechnung: `settings.get("volume")` (0-100) -> `/100` -> ffmpeg `-af volume=X.XX`
-10. `Bun.spawn(["ffmpeg", ...])` -> MP3/MPEG decodieren -> libopus -> RTP an `rtp://{ip}:{port}?pkt_size=1200`
-    - Neue Flags: `-fflags +genpts`, `-vbr off`, `-frame_duration 20` (wie sharkord-music-bot)
-    - `-payload_type` verwendet dynamisch aufgeloesten PayloadType
+7. `transport.produce()` -> Opus-Producer (48kHz, stereo, hardcoded `payloadType: 111`, `parameters: {}` leer, `rtcpFeedback: []`)
+8. Volume-Berechnung: `settings.get("volume")` (0-100) -> `/100` -> ffmpeg `-af volume=X.XX`
+9. `Bun.spawn(["ffmpeg", ...])` -> MP3/MPEG decodieren -> libopus -> RTP an `rtp://{ip}:{port}?pkt_size=1200`
+    - `-payload_type 111` (hardcoded, passend zu Producer)
+    - `-b:a 192k`, `-application audio`
     - ffmpeg Loglevel: `verbose` wenn debug=true, sonst `warning`
     - stdout: `"ignore"`, stderr: `"pipe"`, stdin: `"ignore"`
-11. `ctx.actions.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`)
-12. Producer-Score-Monitoring via `producer.on("score", ...)`
+10. `ctx.actions.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`, `avatarUrl`)
+11. Producer-Score-Monitoring via `producer.on("score", ...)`
+12. Health-Check nach 5s: `producer.getStats()` -> packetCount > 0? (`[WARN]` wenn 0 Pakete)
 13. `cleanup`-Funktion definiert: `stream.remove()`, `producer.close()`, `transport.close()`
-14. Session in `activeSessions` registrieren: `{ ffmpeg, cleanup }`
-15. ffmpeg stderr async auslesen und zeilenweise via `debugLog()` loggen
-16. `ffmpeg.exited.then(code => ...)`: Log-Eintrag, `activeSessions.delete(procKey)`, `cleanup()`
+14. ffmpeg stderr async auslesen und zeilenweise via `debugLog()` loggen
+15. `ffmpeg.exited.then(code => ...)`: Log-Eintrag, `activeSessions.delete(procKey)`, `cleanup()`
+16. Session in `activeSessions` registrieren: `{ ffmpeg, cleanup, done }` (`done` = `ffmpeg.exited.then(...)`)
 
 **Hinweis (BUG-001 Fix):** Der zuvor vorhandene manuelle Consumer-Hack (~60 Zeilen), der ueber `router.transportsForTesting` eigene Consumer auf Client-Transports erstellte, wurde entfernt. Das SDK uebernimmt die Consumer-Erstellung automatisch ueber `createStream()`. Dies entspricht dem Verhalten des funktionierenden Referenz-Plugins `sharkord-music-bot`.
 
-### /hero-diagnose (interne Funktion, L784-L1201)
+### playAudioAndWait (interne Funktion, L420-L432)
+
+```typescript
+async function playAudioAndWait(
+  channelId: number,
+  userId: number,
+  label: string,
+  mp3Path: string,
+): Promise<void>
+```
+
+**REQ:** REQ-CORE-004
+
+Ruft `playAudio()` auf und awaitet danach `activeSessions.get(procKey).done`. Damit blockiert die Funktion bis ffmpeg vollstaendig beendet ist. Wird von `processQueue()` genutzt, um sequentiellen Betrieb sicherzustellen.
+
+### /hero-diagnose (interne Funktion, L889-L1298)
 
 **REQ:** REQ-DBG-008
 
 Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erstellt temporaere Ressourcen (Transport, Producer, ffmpeg, Stream) und inspiziert die gesamte Pipeline. Verwendet lokale Diagnostic-Interfaces (`DiagConsumerLike`, `DiagProducer`, `DiagTransport`, `DiagRouter`, `DiagListenInfo`) statt `any` fuer Typsicherheit.
 
-**Codec-Parameter:** Identisch zu `playAudio()` — dynamischer PayloadType vom Router, `parameters: { "minptime": 10, "useinbandfec": 1 }`, ffmpeg-Flags `-fflags +genpts`, `-vbr off`, `-frame_duration 20`.
+**Codec-Parameter:** Identisch zu `playAudio()` — hardcoded `payloadType: 111`, `parameters: {}` leer, `rtcpFeedback: []`.
 
 **7 Stages:**
 
@@ -170,8 +193,8 @@ Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erste
 |-------|------|-------------|
 | 0 | Pre-flight | `currentVoiceChannelId`-Check, ffmpeg-Verfuegbarkeit (`Bun.spawn(["ffmpeg", "-version"])`), aktive Channels auflisten |
 | 1 | Transport | `getRouter()`, `getListenInfo()`, `createPlainTransport()` erstellen. Bei Fehler: sofortiger Abbruch mit FAIL. |
-| 2 | Producer | PayloadType dynamisch vom Router aufloesen (`rtpCapabilities.codecs` -> `audio/opus` -> `preferredPayloadType`, Fallback 111). `transport.produce()` mit Opus-Codec (48kHz, stereo, dynamischer PT, `minptime`/`useinbandfec`, zufaelliger SSRC). Prueft `producer.paused`. |
-| 3 | ffmpeg | Test-Audio-Datei oder Stille-Generator (`anullsrc`), ffmpeg-Flags inkl. `-fflags +genpts`, `-vbr off`, `-frame_duration 20`, dynamischer payload_type. 2s warten, Producer-Stats pruefen (packetCount > 0?). |
+| 2 | Producer | `transport.produce()` mit Opus-Codec (48kHz, stereo, hardcoded `payloadType: 111`, `parameters: {}` leer, `rtcpFeedback: []`, zufaelliger SSRC). Prueft `producer.paused`. Info-Log: `"Using payloadType=111 (matching playAudio pipeline)"`. |
+| 3 | ffmpeg | Test-Audio-Datei (aus musicDir) oder Stille-Generator (`anullsrc`) als Input, `-t 5` Limit. ffmpeg-Flags wie in `playAudio()`: `payload_type 111`, `192k`, `audio`-Applikation. 2s warten, Producer-Stats pruefen (packetCount > 0?). |
 | 4 | Stream + Consumer Discovery | `ctx.actions.voice.createStream()`, `producer.observer.on("newconsumer", ...)` Hook, 5s warten auf SDK-Consumer. Prueft Consumer-`paused`-Status. |
 | 5 | Router State Dump | `router.dump()`, Consumer-Zaehlung, `router.transportsForTesting` Inspektion, Consumer-Status (paused/resumed), Consumer-Stats und Score. |
 | 6 | Client Transport Deep Inspection | ICE-State (`completed`?), DTLS-State (`connected`?), `iceSelectedTuple`, Consumer outbound-rtp Stats (packetCount > 0?), vollstaendiger Transport-Dump. |
@@ -248,16 +271,17 @@ user:joined(userId, username)
   |
   +- oncePerDay && bereits heute begruesst? -> debugLog, return
   |
-  +- Audio-Datei existiert nicht? -> Error-Log, return
+  +- Audio-Datei existiert nicht? -> ctx.error(), return
   |
   +- INTRO_DELAY_MS (5s) warten
   |
-  +- Erster aktiver Channel aus activeChannels
+  +- Erster aktiver Channel aus activeChannels (kein Mitglieder-Check — BUG-002)
   |   +- Kein Channel? -> ctx.error(), return
   |
-  +- playAudio(channelId, userId, username, audioPath)
+  +- oncePerDay? -> DailyGreets speichern (VOR dem Einqueuen)
   |
-  +- oncePerDay? -> DailyGreets speichern
+  +- enqueuePlayback({ channelId, userId, label: username, mp3Path })
+       -> processQueue(channelId) -> playAudioAndWait(...)
 ```
 
 ### Flow 2: playAudio -> On-demand Streaming
@@ -272,25 +296,48 @@ playAudio(channelId, userId, label, mp3Path)
   +- Router holen (getRouter)
   +- ListenInfo holen (getListenInfo)
   |
-  +- PlainTransport erstellen (rtcpMux, comedia, kein SRTP)
-  +- PayloadType dynamisch vom Router aufloesen (rtpCapabilities.codecs -> audio/opus)
-  +- Opus-Producer erstellen (48kHz, stereo, zufaelliger SSRC, minptime=10, useinbandfec=1)
+  +- PlainTransport erstellen (rtcpMux=true, comedia=true, enableSrtp=false)
+  +- SSRC = Math.floor(Math.random() * 1e9)
+  +- Opus-Producer erstellen (48kHz, stereo, payloadType=111 hardcoded, parameters={} leer)
   |
   +- Volume berechnen: settings.get("volume") / 100
   |
   +- Bun.spawn(ffmpeg) -> MP3/MPEG -> libopus -> RTP an Transport-Port
-  |   +- Flags: -fflags +genpts, -vbr off, -frame_duration 20
-  |   +- payload_type: dynamisch vom Router
+  |   +- -payload_type 111, -b:a 192k, -application audio
   |   +- stderr: pipe -> async zeilenweise debugLog
   |
   +- createStream() -> Channel-Stream exponieren (SDK erstellt Consumer automatisch)
   |
-  +- Producer-Score-Monitoring
+  +- Producer-Score-Monitoring via producer.on("score", ...)
+  +- Health-Check nach 5s via producer.getStats()
   |
   +- cleanup-Funktion: stream.remove(), producer.close(), transport.close()
-  +- Session in activeSessions registrieren
+  +- done = ffmpeg.exited.then(code => { Log + activeSessions.delete + cleanup() })
+  +- Session in activeSessions registrieren: { ffmpeg, cleanup, done }
+```
+
+### Flow 2b: enqueuePlayback/processQueue -> Sequentielle Wiedergabe pro Channel
+
+```
+enqueuePlayback({ channelId, userId, label, mp3Path })
   |
-  +- ffmpeg.exited -> Log + activeSessions.delete + cleanup()
+  +- playbackQueues.get(channelId) ?? neue Queue anlegen
+  +- queue.push(entry)
+  +- debugLog: Queue-Laenge
+  +- processQueue(channelId) aufrufen (idempotent via queueProcessing-Guard)
+       |
+       +- queueProcessing.has(channelId)? -> return (bereits aktiv)
+       |
+       +- queueProcessing.add(channelId)
+       |
+       +- while queue.length > 0:
+       |     entry = queue.shift()
+       |     await playAudioAndWait(channelId, entry.userId, entry.label, entry.mp3Path)
+       |         -> playAudio(...) + await session.done
+       |
+       +- queueProcessing.delete(channelId)
+       +- playbackQueues.delete(channelId)
+       +- debugLog: Queue leer
 ```
 
 ### Flow 3: /hero-set -> Mapping speichern
@@ -447,7 +494,8 @@ bun build.ts
 
 | Problem | Beschreibung | Status |
 |---------|-------------|--------|
-| Audio nicht hoerbar (BUG-001) | Fix angewendet: (1) Codec-Parameters `minptime`/`useinbandfec` hinzugefuegt, (2) PayloadType dynamisch vom Router aufgeloest statt hardcoded 111, (3) ffmpeg-Flags `-fflags +genpts`, `-vbr off`, `-frame_duration 20` ergaenzt, (4) manueller Consumer-Hack entfernt — SDK uebernimmt Consumer-Erstellung via `createStream()` (wie im funktionierenden Referenz-Plugin `sharkord-music-bot`). | Fix angewendet, Verifikation ausstehend |
+| Audio nicht hoerbar (BUG-001) | Root Cause war leere `announcedAddress` in `config.ini` — nicht der Plugin-Code. Fix: `announcedAddress=127.0.0.1` (lokal) bzw. Public-IP eintragen. Code-Aenderungen fuer music-bot-Paritaet wurden ebenfalls angewendet (payloadType=111 hardcoded, `parameters: {}` leer, manueller Consumer-Hack entfernt). | Geloest und verifiziert (Docker-Dev-Stack, 2026-03-20) |
+| Intro spielt obwohl User alleine im Channel (BUG-002) | Im `user:joined`-Handler fehlt eine Prüfung, ob der Voice-Channel wirklich weitere echte Nutzer enthält. Es wird einfach der erste Channel aus `activeChannels` genommen, ohne Mitglieder-Check. Dadurch spielt der Bot sich selbst ein Intro vor. Betroffene Stelle: L519-L524 (`user:joined`-Handler nach INTRO_DELAY_MS). | Offen — Fix ausstehend |
 
 ---
 
@@ -528,3 +576,4 @@ bun build.ts
 | 2026-03-17 | Test-Abdeckung aktualisiert: missing-coverage.test.ts (29 Tests) und server.test.ts (29 Tests, vorher faelschlich als 18 dokumentiert) aufgenommen. Gesamtzahl: 74 Tests in 5 Dateien. Lueckenanalyse vollstaendig ueberarbeitet — viele REQ-IDs jetzt durch missing-coverage.test.ts abgedeckt (REQ-CORE-002/003/005/006, REQ-CMD-001/002/003/010/013, REQ-CFG-001/002/003/004, REQ-DATA-001/002/004/007). |
 | 2026-03-18 | Code-Fixes reflektiert: `any` durch `unknown`/Diagnostic-Interfaces ersetzt (REQ-NF-001), `stream.remove()` in cleanup() ergaenzt, `ctx.error()` statt `debugLog()` bei fehlendem Voice-Channel (REQ-CORE-006), debugLog in allen 13 Command-Handlern (REQ-DBG-005). Tests: 76 in 5 Dateien (server.test.ts: 31, missing-coverage.test.ts: 29). |
 | 2026-03-18 | **BUG-001 Fix dokumentiert:** playAudio() und /hero-diagnose aktualisiert — Codec-Parameters (`minptime`, `useinbandfec`), dynamischer PayloadType vom Router, neue ffmpeg-Flags (`-fflags +genpts`, `-vbr off`, `-frame_duration 20`), manueller Consumer-Hack entfernt (~60 Zeilen). SDK uebernimmt Consumer-Erstellung via `createStream()`. Zeilennummern aktualisiert (~1237 Zeilen). Flow 2 aktualisiert. BUG-001 Status: Fix angewendet, Verifikation ausstehend. |
+| 2026-03-20 | **Codebase-Abgleich:** Playback-Queue-System (`enqueuePlayback`, `processQueue`, `playAudioAndWait`, `QueueEntry`, `playbackQueues`, `queueProcessing`) nacherfasst — war vollstaendig undokumentiert. `PlaybackSession` um `done: Promise<void>` ergaenzt. `/hero-reset-me` Command hinzugefuegt. Codec-Parameter in `playAudio()` und `/hero-diagnose` korrigiert (payloadType=111 hardcoded, `parameters: {}` leer — dynamische Aufloesung war falsch dokumentiert). `voice:runtime_closed` Queue-Cleanup-Logik ergaenzt. BUG-002 (Intro bei leerem Channel) dokumentiert. BUG-001 als verifiziert markiert. Zeilenzahl auf ~1334 aktualisiert. Flow 1 und Flow 2 + neuer Flow 2b aktualisiert. |

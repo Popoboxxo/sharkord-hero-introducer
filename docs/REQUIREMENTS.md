@@ -32,12 +32,20 @@
 | REQ-CORE-009 | Der Bot joint Voice-Channels nicht dauerhaft. Transport, Producer und Stream werden ausschließlich on-demand für die Dauer einer einzelnen Wiedergabe erstellt. Nach Wiedergabeende (ffmpeg-Exit) werden alle Ressourcen (Transport, Producer) automatisch aufgeräumt. Es verbleibt kein persistenter Bot im Channel. | Implemented | Must | `src/server.ts` L201–L391 |
 | REQ-CORE-010 | Zwischen dem `user:joined`-Event und dem Start der Intro-Wiedergabe wird eine konfigurierbare Verzögerung (`INTRO_DELAY_MS`, Default: 5000 ms) eingehalten, damit der User Zeit hat, einem Voice-Channel beizutreten. | Implemented | Must | `src/server.ts` L420, L472–L473 |
 | REQ-CORE-011 | Wenn ein Voice-Channel geschlossen wird (`voice:runtime_closed`), werden alle aktiven Playback-Sessions für diesen Channel automatisch beendet (ffmpeg-Kill, Cleanup, Session-Entfernung). | Implemented | Must | `src/server.ts` L402–L413 |
+| REQ-CORE-012 | Wenn mehrere User gleichzeitig oder kurz nacheinander einem Voice-Channel beitreten, werden die Intros über eine per-Channel-Warteschlange sequenziell abgespielt (nicht überlappend). Die Queue wird bei Channel-Schließung (`voice:runtime_closed`) automatisch geleert. | Implemented | Must | `src/server.ts` |
+| REQ-CORE-013 | Der Bot betritt einen Voice-Channel ausschließlich in zwei Fällen: (a) ein `user:joined`-Event tritt ein und der auslösende User befindet sich zum Zeitpunkt der Wiedergabe in einem aktiven Voice-Channel, oder (b) ein Audio-Command (`/hero-play`, `/hero-play-me`, `/hero-play-song`, `/hero-diagnose`) wird von einem User ausgeführt, der sich in einem aktiven Voice-Channel befindet. In allen anderen Fällen wird kein Transport erstellt und keine Wiedergabe gestartet. Wenn `channelMembers` im Event vorhanden ist und `length <= 1`, wird kein Intro gespielt (BUG-002-Fix). | Implemented | Must | `src/server.ts` |
+| REQ-CORE-014 | Im `user:joined`-Handler wird der Ziel-Voice-Channel anhand der `voiceChannelId` aus dem Event bestimmt, sofern diese vom SDK übermittelt wird. Fehlt die `voiceChannelId` im Event, wird der erste aktive Channel (Insertion-Order) als Fallback verwendet und ein Debug-Log-Eintrag mit dem Hinweis "voiceChannelId not provided, using first active channel" erzeugt. Ist der so ermittelte Channel nicht im `activeChannels`-Set vorhanden, wird keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` |
 
 ### Abnahmekriterien REQ-CORE
 
 | REQ-ID | Abnahmekriterium |
 |--------|-----------------|
 | REQ-CORE-001 | Ein User mit konfiguriertem Audio-Mapping (Matching über `username` aus `user:joined`-Event) joint → nach `INTRO_DELAY_MS` (5s) Verzögerung → Audio-Pfad wird als `path.join(pluginDir, "music", audioFileName)` aufgelöst → alle Teilnehmer im Voice-Channel hören das Intro. |
+| REQ-CORE-013-A | `user:joined`-Event ohne Voice-Channel-Zugehörigkeit des Users (kein aktiver Channel mit dem User) → kein Transport erstellt, keine Wiedergabe, Debug-Log. |
+| REQ-CORE-013-B | `/hero-play` durch User ohne aktiven Voice-Channel → Fehlermeldung "You must be in a voice channel to use this command.", kein Transport erstellt. |
+| REQ-CORE-014-A | `user:joined`-Event liefert `voiceChannelId` → Wiedergabe erfolgt exakt in diesem Channel, nicht in einem anderen aktiven Channel. |
+| REQ-CORE-014-B | `user:joined`-Event ohne `voiceChannelId` → Fallback auf ersten aktiven Channel, Debug-Log enthält "voiceChannelId not provided, using first active channel". |
+| REQ-CORE-014-C | `user:joined`-Event, `voiceChannelId` aus Event ist nicht im `activeChannels`-Set → keine Wiedergabe, Debug-Log. |
 | REQ-CORE-002 | Ein User ohne MP3-Mapping joint → keine hörbare Ausgabe, kein Fehler im Log. |
 | REQ-CORE-003 | MP3 in music-map.json verweist auf nicht-existente Datei → Fehler-Log-Eintrag, keine Wiedergabe. |
 | REQ-CORE-004 | Während der Wiedergabe ist ein ffmpeg-Prozess aktiv und sendet Opus-RTP an den konfigurierten Port. `Bun.spawn` wird verwendet. |
@@ -48,6 +56,8 @@
 | REQ-CORE-009 | Vor Wiedergabe: kein Transport/Producer fuer den Channel vorhanden. Waehrend Wiedergabe: Transport+Producer+Stream existieren. Nach Wiedergabe: alle drei Ressourcen sind geschlossen/entfernt. |
 | REQ-CORE-010 | User joint → mindestens `INTRO_DELAY_MS` (5000 ms) vergehen bevor `playAudio` aufgerufen wird. |
 | REQ-CORE-011 | Voice-Channel wird geschlossen → alle `activeSessions` mit passendem channelId-Prefix werden beendet (kill + cleanup + delete). |
+| REQ-CORE-012-A | User A und User B joinen gleichzeitig → Intro A spielt zuerst, Intro B spielt nach Abschluss von A. |
+| REQ-CORE-012-B | Voice-Channel wird während laufender Queue geschlossen → Queue wird geleert, verbleibende Intros werden nicht abgespielt. |
 
 ---
 
@@ -69,6 +79,9 @@
 | REQ-CMD-012 | `/hero-play <displayName>` spielt das Intro einer anderen Person ab. Der Command akzeptiert ein Argument `displayName: string`, sucht diesen in der MusicMap und spielt die zugehörige Audio-Datei ab. Als Ziel-Voice-Channel wird `invokerCtx.currentVoiceChannelId` verwendet. Ist kein Mapping für den displayName vorhanden, wird eine Info-Meldung zurückgegeben. Existiert die zugeordnete Audio-Datei nicht, wird eine Fehlermeldung zurückgegeben. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L721–L762 |
 | REQ-CMD-013 | `/hero-play-song <songName>` spielt eine beliebige Audio-Datei aus dem music-Verzeichnis im aktuellen Voice-Channel des Aufrufers ab. Der `songName` kann **mit oder ohne Dateiendung** angegeben werden (z.B. `eisenbart` oder `eisenbart.mp3`). Die Suche ist case-insensitive. Existieren mehrere Dateien mit gleichem Namen aber unterschiedlicher Endung (z.B. `song.mp3` und `song.mpeg`), wird der User darauf hingewiesen und muss den vollständigen Dateinamen mit Endung angeben. Wird kein passender Song gefunden, wird eine Fehlermeldung mit der Liste verfügbarer Dateien angezeigt. Ist keine `currentVoiceChannelId` im Context vorhanden, wird eine Fehlermeldung zurückgegeben. | Implemented | Should | `src/server.ts` L764–L801 |
 | REQ-CMD-014 | `/hero-diagnose` führt eine vollständige Audio-Pipeline-Diagnose durch und gibt einen strukturierten Report mit PASS/FAIL/INFO pro Stage zurück. Der Aufrufer muss sich in einem Voice-Channel befinden. Details der Diagnose-Stages sind in REQ-DBG-008 spezifiziert. | Implemented | Should | `src/server.ts` L803–L1166 |
+| REQ-CMD-015 | `/hero-reset-me` setzt den täglichen Begrüßungszähler des ausführenden Users zurück, sodass das Intro beim nächsten Voice-Channel-Beitritt erneut abgespielt wird (auch wenn `oncePerDay` aktiviert ist und der User heute bereits begrüßt wurde). Die userId wird über `invokerCtx.userId` ermittelt. Existiert kein Eintrag in den Daily-Greets, wird eine Info-Meldung zurückgegeben. | Implemented | Should | `src/server.ts` |
+| REQ-CMD-016 | Alle Commands, die eine Audio-Wiedergabe auslösen (`/hero-play-me`, `/hero-play`, `/hero-play-song`, `/hero-diagnose`), prüfen vor dem Start der Wiedergabe, ob der ausführende User sich in einem aktiven Voice-Channel befindet (`invokerCtx.currentVoiceChannelId` ist gesetzt und im `activeChannels`-Set vorhanden). Ist dies nicht der Fall, wird die Ausführung ohne Wiedergabe abgebrochen und eine Fehlermeldung "You must be in a voice channel to use this command." zurückgegeben. Es wird kein Transport oder Producer erstellt. | Open | Must | — |
+| REQ-CMD-017 | `/hero-search-music` durchsucht die SQLite-Datenbank des Sharkord-Servers (`<ctx.path>/../../db.sqlite`) nach Audio-Anhängen in Text-Kanälen und kopiert alle gefundenen Audio-Dateien in das Music-Verzeichnis des Plugins (`<ctx.path>/music/`). Als Audio-Dateien gelten Einträge in der `files`-Tabelle, bei denen `mimeType` = `audio/mpeg` oder `extension` = `.mp3` / `.mpeg` ist. Der `name`-Wert der Quell-Datei wird relativ zu `<ctx.path>/../../public/` aufgelöst. Als Ziel-Dateiname wird `originalName` aus der `files`-Tabelle verwendet; fehlt `originalName`, wird `name` als Fallback genutzt. Existiert im Zielverzeichnis bereits eine Datei mit demselben Namen, wird diese übersprungen und der User erhält einen Hinweis auf den Konflikt. Der Command gibt eine Zusammenfassung zurück: Anzahl gefundener, kopierter und übersprungener Dateien. Ist die Datenbank nicht erreichbar (Datei nicht vorhanden, keine Leseberechtigung), wird eine aussagekräftige Fehlermeldung zurückgegeben; der Plugin-Prozess darf dabei nicht abstürzen. Der Command erfordert keinen aktiven Voice-Channel. | Implemented | Could | `src/server.ts` |
 
 ### Abnahmekriterien REQ-CMD
 
@@ -108,6 +121,22 @@
 | REQ-CMD-014-A | Ausführung in Voice-Channel → strukturierter Report mit PASS/FAIL/INFO pro Stage (0-6) wird zurückgegeben und geloggt. |
 | REQ-CMD-014-B | Ausführung ohne Voice-Channel → FAIL in Stage 0, Report enthält Fehlermeldung. |
 | REQ-CMD-014-C | Nach Diagnose-Abschluss → Transport, Producer und ffmpeg-Prozess werden aufgeräumt. |
+| REQ-CMD-015-A | Ausführung durch User mit bestehendem Daily-Greet-Eintrag → Eintrag wird entfernt, Bestätigung. |
+| REQ-CMD-015-B | Ausführung durch User ohne Daily-Greet-Eintrag → Info-Meldung "no entry to reset". |
+| REQ-CMD-015-C | Nach Reset + erneutem Voice-Channel-Beitritt (bei `oncePerDay=true`) → Intro wird erneut abgespielt. |
+| REQ-CMD-016-A | `/hero-play-me` ohne `currentVoiceChannelId` im Context → Fehlermeldung, kein Transport erstellt. |
+| REQ-CMD-016-B | `/hero-play <displayName>` ohne `currentVoiceChannelId` im Context → Fehlermeldung, kein Transport erstellt. |
+| REQ-CMD-016-C | `/hero-play-song <songName>` ohne `currentVoiceChannelId` im Context → Fehlermeldung, kein Transport erstellt. |
+| REQ-CMD-016-D | `/hero-diagnose` ohne `currentVoiceChannelId` im Context → Fehlermeldung, kein Transport erstellt. |
+| REQ-CMD-016-E | Jeder der vier Commands mit `currentVoiceChannelId` gesetzt, aber Channel nicht im `activeChannels`-Set → Fehlermeldung "Voice channel is not active.", kein Transport erstellt. |
+| REQ-CMD-017-A | Datenbank enthält 3 Audio-Dateien (`audio/mpeg`), davon 1 bereits im music-Verzeichnis vorhanden → Command meldet: 3 gefunden, 2 kopiert, 1 übersprungen. |
+| REQ-CMD-017-B | Datenbank enthält keine Audio-Dateien → Command meldet: 0 gefunden, 0 kopiert, 0 übersprungen, kein Fehler. |
+| REQ-CMD-017-C | Datei mit `originalName` gesetzt → Zieldatei erhält `originalName` als Dateinamen. |
+| REQ-CMD-017-D | Datei ohne `originalName` (NULL oder leer) → Zieldatei erhält `name` als Dateinamen. |
+| REQ-CMD-017-E | Zieldatei existiert bereits im music-Verzeichnis → Datei wird nicht überschrieben, Rückmeldung enthält Hinweis auf den Namenskonflikt. |
+| REQ-CMD-017-F | `db.sqlite` unter `<ctx.path>/../../db.sqlite` nicht vorhanden oder nicht lesbar → Fehlermeldung mit Pfad und Fehlerursache, kein Plugin-Crash. |
+| REQ-CMD-017-G | Ausführung ohne aktiven Voice-Channel → Command wird trotzdem ausgeführt, keine Fehlermeldung wegen fehlendem Voice-Channel. |
+| REQ-CMD-017-H | Nur Dateien mit `mimeType = audio/mpeg` oder `extension IN ('.mp3', '.mpeg')` werden übernommen; Dateien anderer Typen (z. B. `image/jpeg`) bleiben unberücksichtigt. |
 
 ---
 
@@ -238,6 +267,7 @@
 | ID | Bereich | Beschreibung | Status |
 |----|---------|-------------|--------|
 | BUG-001 | Audio-Playback | Die Server-seitige Playback-Pipeline funktioniert vollständig: Producer Score erreicht 10, Consumer wird erstellt, 1539+ RTP-Pakete werden gesendet. Audio ist dennoch nicht hörbar. Die Implementierung wurde an das funktionierende Referenz-Plugin `sharkord-music-bot` angeglichen (gleiche ffmpeg-Flags, `Bun.spawn`, kein Delay). Vermutete Ursache liegt Client-seitig: Consumer-Resume, WebRTC-Transport-Setup oder Audio-Element im Browser. Betrifft REQ-CORE-004. | Wird untersucht |
+| BUG-002 | Channel-Join-Logik | Der Bot ist einem Voice-Channel beigetreten (channelId=3) und hat Musik abgespielt (userId=2, SharkordUser46797), obwohl sich zu diesem Zeitpunkt kein User im Channel befand. Ursache: Der `user:joined`-Handler wählt nach dem `INTRO_DELAY_MS`-Timeout blind den ersten Eintrag aus dem `activeChannels`-Set, ohne zu prüfen, ob der auslösende User tatsächlich in diesem Channel sitzt. Zudem liefert das `user:joined`-Event möglicherweise keine `voiceChannelId`. Betrifft REQ-CORE-001 (präzisiert durch REQ-CORE-013 und REQ-CORE-014). | Behoben — REQ-CORE-013 und REQ-CORE-014 implementiert |
 
 ---
 
@@ -256,6 +286,9 @@
 | REQ-CORE-009 | `src/server.ts` L201–L391 | — (offen) |
 | REQ-CORE-010 | `src/server.ts` L420, L472–L473 | — (offen) |
 | REQ-CORE-011 | `src/server.ts` L402–L413 | — (offen) |
+| REQ-CORE-012 | `src/server.ts` L204–L237 | — (offen) |
+| REQ-CORE-013 | — (offen) | — (offen) |
+| REQ-CORE-014 | — (offen) | — (offen) |
 | REQ-CMD-001 | `src/server.ts` L497–L506 | — (offen) |
 | REQ-CMD-002 | `src/server.ts` L508–L517 | — (offen) |
 | REQ-CMD-003 | `src/server.ts` L519–L535 | — (offen) |
@@ -270,6 +303,9 @@
 | REQ-CMD-012 | `src/server.ts` L721–L762 | `tests/unit/server.test.ts` |
 | REQ-CMD-013 | `src/server.ts` L764–L801 | — (offen) |
 | REQ-CMD-014 | `src/server.ts` L803–L1166 | — (offen) |
+| REQ-CMD-015 | `src/server.ts` L862–L887 | — (offen) |
+| REQ-CMD-016 | — (offen) | — (offen) |
+| REQ-CMD-017 | `src/server.ts` | — (offen) |
 | REQ-CFG-001 | `src/server.ts` L67–L73 | `tests/unit/server.test.ts` |
 | REQ-CFG-002 | `src/server.ts` L74–L81 | — (offen) |
 | REQ-CFG-003 | `src/server.ts` L1188 | — (offen) |
@@ -304,6 +340,9 @@
 ## Lückenanalyse
 
 ### Tests fehlen für:
+- **REQ-CORE-013, REQ-CORE-014** — Channel-Join-Guard und Event-basierte Channel-Auswahl nicht implementiert und nicht getestet (BUG-002).
+- **REQ-CMD-016** — Übergreifende Voice-Channel-Prüfung für Audio-Commands nicht als eigenständige Anforderung getestet.
+- **REQ-CMD-017** — `/hero-search-music` implementiert, aber noch nicht getestet.
 - **REQ-CORE-002, REQ-CORE-003** — No-Mapping-Szenario und Datei-Existenz-Check nicht unit-getestet.
 - **REQ-CORE-005** — Voice-Channel-Tracking (Add/Remove) nicht getestet.
 - **REQ-CORE-006** — Verhalten bei 0 aktiven Channels nicht getestet.
@@ -338,9 +377,10 @@
 - **REQ-DBG-001** — Debug-Logging ein/aus (`tests/unit/server.test.ts`)
 
 ### Empfehlung:
-1. **Hoechste Prioritaet:** Unit-Tests fuer REQ-CORE-002, REQ-CORE-003, REQ-CFG-002.
-2. **Hohe Prioritaet:** Tests fuer REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop), REQ-CORE-011 (Channel-Cleanup).
-3. **Mittlere Prioritaet:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004), REQ-CORE-010 (Delay), REQ-CMD-013 (Play-Song).
+1. **Hoechste Prioritaet:** Implementierung von REQ-CORE-013 und REQ-CORE-014 (BUG-002 — Bot joint Channel ohne User). Danach REQ-CMD-016 (Voice-Channel-Prüfung konsolidieren).
+2. **Hohe Prioritaet:** Unit-Tests fuer REQ-CORE-002, REQ-CORE-003, REQ-CFG-002.
+3. **Hohe Prioritaet:** Tests fuer REQ-CMD-001 bis REQ-CMD-003 (Enable/Disable/Stop), REQ-CORE-011 (Channel-Cleanup).
+4. **Mittlere Prioritaet:** Persistenz-Tests (REQ-DATA-001, REQ-DATA-002, REQ-DATA-004), REQ-CORE-010 (Delay), REQ-CMD-013 (Play-Song).
 
 ---
 
@@ -360,3 +400,5 @@
 | 2026-03-15 | REQ-CFG-005 (Volume-Setting) hinzugefügt. REQ-CORE-009 (On-Demand Playback ohne persistenten Bot) hinzugefügt. REQ-CORE-004 aktualisiert (Bun.spawn, Referenz-Plugin-Angleichung, bekannter Audio-Bug dokumentiert). Alle Traceability-Zeilennummern aktualisiert. Sektion "Bekannte Bugs" (BUG-001) hinzugefügt. Lückenanalyse erweitert um REQ-CORE-009 und REQ-CFG-005. | Requirements Engineer |
 | 2026-03-15 | REQ-DBG-008 (`/hero-diagnose`) hinzugefügt: Pipeline-Diagnose-Command mit 6 Stages (Pre-flight, Transport, Producer, ffmpeg, Stream+Consumer-Discovery, Router-Dump). Unit-Tests fuer playAudio-Pipeline (8 Tests) und Referenz-Paritaetstests (4 Tests) erstellt. Mock-Infrastruktur erweitert (Producer, Consumer, Router, Bun.spawn). | Developer |
 | 2026-03-17 | **Vollstaendige Requirements-Analyse** gegen aktuellen Codestand (server.ts 1201 Zeilen). Neue REQs: REQ-CORE-010 (Intro-Delay), REQ-CORE-011 (Channel-Close Session-Cleanup), REQ-CMD-014 (`/hero-diagnose` als Command-REQ). Korrekturen: REQ-CORE-001 um Delay und Channel-Auswahl praezisiert, REQ-CORE-006 von "Fehler geloggt" auf "Debug-Log" korrigiert, REQ-CMD-010 Beschreibung an tatsaechliche Implementierung angepasst (alle Parameter statt nur invokerCtx), REQ-DBG-008 auf 7 Stages (0-6) aktualisiert. Alle Traceability-Zeilennummern gegen server.ts abgeglichen und aktualisiert (REQ-LIFE-001/002, REQ-CFG-003, REQ-CMD-010, REQ-DBG-008). Traceability-Matrix: REQ-CORE-004/007/008/CFG-005 Test-Abdeckung nachgetragen (play-audio.test.ts, play-audio-comparison.test.ts). Lueckenanalyse vollstaendig ueberarbeitet. | Requirements Engineer |
+| 2026-03-20 | **BUG-002:** Bot betritt Voice-Channel ohne anwesenden User dokumentiert. Neue REQs: REQ-CORE-013 (Channel-Join nur bei legitimem Trigger), REQ-CORE-014 (Channel-Auswahl anhand voiceChannelId aus user:joined-Event mit Fallback-Logik), REQ-CMD-016 (Voice-Channel-Pflichtprüfung vor Wiedergabe fuer alle Audio-Commands). Traceability-Matrix und Lueckenanalyse aktualisiert. Empfehlung: REQ-CORE-013/014 haben hoechste Implementierungsprioritaet. | Requirements Engineer |
+| 2026-03-20 | REQ-CMD-017 (`/hero-search-music`) hinzugefuegt: Command durchsucht Sharkord-SQLite-DB nach Audio-Anhaengen und kopiert gefundene Dateien ins Plugin-Music-Verzeichnis. Prioritaet: Could. 8 Abnahmekriterien (REQ-CMD-017-A bis -H) definiert. Traceability-Matrix und Lueckenanalyse aktualisiert. Feasibility bestaetigt (Bun SQLite, bekanntes DB-Schema, Dateisystem-Zugriff). | Requirements Engineer |

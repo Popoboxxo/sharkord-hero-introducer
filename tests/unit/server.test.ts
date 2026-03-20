@@ -274,11 +274,14 @@ describe("Plugin onLoad – commands & data", () => {
     });
   });
 
-  // -- REQ-CORE-001: user:joined – username-based lookup ------------------
+  // -- REQ-CORE-001 / BUG-002: user:joined – caches username only --------
+  //
+  // After BUG-002 fix: user:joined (= server login) no longer triggers
+  // automatic intro playback. It only caches the userId → username mapping.
+  // Automatic intros are blocked until the SDK exposes voice:user_joined.
 
   describe("user:joined handler", () => {
-    it("[REQ-CORE-001] should look up intro by username, not by userId", async () => {
-      // Set up a mapping keyed by username "Alice"
+    it("[REQ-CORE-001] should cache userId → username on user:joined (no auto-intro)", async () => {
       await fs.mkdir(dataDir, { recursive: true });
       await fs.mkdir(musicDir, { recursive: true });
       await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
@@ -289,7 +292,6 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { ctx, settings, events } = await loadPlugin(tmpDir);
 
-      // Enable debug mode so debugLog calls produce output
       settings.get = mock((key: string) => {
         if (key === "enabled") return true;
         if (key === "oncePerDay") return false;
@@ -299,31 +301,26 @@ describe("Plugin onLoad – commands & data", () => {
       });
 
       const userJoinedHandler = events.get("user:joined")!;
-
-      // userId 999 has no mapping, but username "Alice" does
       await userJoinedHandler({ userId: 999, username: "Alice" });
 
+      // Verify: user cache was updated (written to disk)
+      const cacheRaw = await fs.readFile(path.join(dataDir, "user-cache.json"), "utf8");
+      const cache = JSON.parse(cacheRaw);
+      expect(cache["999"]).toBe("Alice");
+
+      // Verify: NO playback was triggered (getRouter must NOT be called)
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+
+      // Verify: auto-intro skip is logged
       const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
         (c: unknown[]) => String(c[0]),
       );
-
-      // If lookup used userId (999), "No intro configured" would appear.
-      // Since it uses username ("Alice"), the mapping is found.
-      const noIntroMsg = logMessages.filter((m: string) =>
-        m.includes("No intro configured"),
+      const skipMsg = logMessages.filter((m: string) =>
+        m.includes("Auto-intro skipped") || m.includes("BUG-002"),
       );
-      expect(noIntroMsg).toHaveLength(0);
-
-      // With no active voice channel the handler reaches the "No active voice channel" path
-      // which is logged via ctx.error
-      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
-      );
-      const noChannelMsg = errorMessages.filter((m: string) =>
-        m.includes("No active voice channel"),
-      );
-      expect(noChannelMsg.length).toBeGreaterThanOrEqual(1);
-    }, 15000);
+      expect(skipMsg.length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   // -- REQ-CMD-009: /hero-set-me ------------------------------------------
@@ -462,7 +459,7 @@ describe("Plugin onLoad – commands & data", () => {
         { userId: 42 },
       );
 
-      expect(result).toContain("not in a voice channel");
+      expect(result).toContain("You must be in a voice channel to use this command.");
     });
 
     it("[REQ-CMD-011] should return error when user is not in user cache", async () => {
@@ -554,7 +551,7 @@ describe("Plugin onLoad – commands & data", () => {
         { displayName: "Alice" },
       );
 
-      expect(result).toContain("not in a voice channel");
+      expect(result).toContain("You must be in a voice channel to use this command.");
     });
   });
 

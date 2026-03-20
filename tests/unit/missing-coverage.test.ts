@@ -73,53 +73,37 @@ describe("Missing Coverage Tests", () => {
 
   // =========================================================================
   // REQ-CORE-002: No playback when user has no mapping
+  // (Tested via /hero-play command, since user:joined no longer triggers playback)
   // =========================================================================
 
   describe("REQ-CORE-002 — No playback without mapping", () => {
-    it("[REQ-CORE-002] should not play audio and not error when user has no MP3 mapping", async () => {
+    it("[REQ-CORE-002] should return 'no intro configured' when /hero-play is called for unmapped user", async () => {
       await fs.mkdir(dataDir, { recursive: true });
-      // Music map is empty — no mapping for anyone
       await fs.writeFile(
         path.join(dataDir, "music-map.json"),
         JSON.stringify({}),
       );
 
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
 
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return true;
-        if (key === "oncePerDay") return false;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 777, username: "NoMappingUser" });
-
-      // No error should have been logged
-      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
+      const result = await heroPlay.executes(
+        { userId: 1, currentVoiceChannelId: 5 },
+        { displayName: "NoMappingUser" },
       );
-      expect(errorMessages).toHaveLength(0);
 
-      // Debug log should indicate no intro configured
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
-      );
-      const noIntroMessages = logMessages.filter((m: string) =>
-        m.includes("No intro configured"),
-      );
-      expect(noIntroMessages.length).toBeGreaterThan(0);
-    }, 15000);
+      expect(typeof result).toBe("string");
+      expect(result).toContain("No intro configured");
+    });
   });
 
   // =========================================================================
   // REQ-CORE-003: File existence check before playback
+  // (Tested via /hero-play-me command, since user:joined no longer triggers playback)
   // =========================================================================
 
   describe("REQ-CORE-003 — File existence check", () => {
-    it("[REQ-CORE-003] should log error and not play when mapped audio file does not exist", async () => {
+    it("[REQ-CORE-003] should return 'file not found' when /hero-play-me references missing file", async () => {
       await fs.mkdir(dataDir, { recursive: true });
       await fs.mkdir(musicDir, { recursive: true });
       // Map points to a file that does NOT exist on disk
@@ -127,29 +111,21 @@ describe("Missing Coverage Tests", () => {
         path.join(dataDir, "music-map.json"),
         JSON.stringify({ GhostUser: "nonexistent.mp3" }),
       );
-
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
-
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return true;
-        if (key === "oncePerDay") return false;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 888, username: "GhostUser" });
-
-      // Should have logged an error about file not found
-      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "888": "GhostUser" }),
       );
-      const fileNotFoundErrors = errorMessages.filter((m: string) =>
-        m.includes("not found"),
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+
+      const result = await heroPlayMe.executes(
+        { userId: 888, currentVoiceChannelId: 5 },
       );
-      expect(fileNotFoundErrors.length).toBeGreaterThan(0);
-    }, 15000);
+
+      expect(typeof result).toBe("string");
+      expect(result).toContain("not found");
+    });
   });
 
   // =========================================================================
@@ -180,10 +156,11 @@ describe("Missing Coverage Tests", () => {
 
   // =========================================================================
   // REQ-CORE-006: No active voice channel
+  // (Tested via /hero-play-me command — user:joined no longer triggers playback)
   // =========================================================================
 
   describe("REQ-CORE-006 — No active voice channel", () => {
-    it("[REQ-CORE-006] should not play when no voice channel is active", async () => {
+    it("[REQ-CORE-006] should return error when user is not in a voice channel (/hero-play-me)", async () => {
       await fs.mkdir(dataDir, { recursive: true });
       await fs.mkdir(musicDir, { recursive: true });
       await fs.writeFile(path.join(musicDir, "lonely.mp3"), "fake-mp3");
@@ -191,30 +168,20 @@ describe("Missing Coverage Tests", () => {
         path.join(dataDir, "music-map.json"),
         JSON.stringify({ LonelyUser: "lonely.mp3" }),
       );
-
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
-
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return true;
-        if (key === "oncePerDay") return false;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      // Do NOT trigger voice:runtime_initialized, so activeChannels is empty
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 333, username: "LonelyUser" });
-
-      // The error log should mention no active voice channel
-      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "333": "LonelyUser" }),
       );
-      const noChannelMsg = errorMessages.filter((m: string) =>
-        m.includes("No active voice channel"),
-      );
-      expect(noChannelMsg.length).toBeGreaterThan(0);
-    }, 15000);
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+
+      // No currentVoiceChannelId → user is not in a voice channel
+      const result = await heroPlayMe.executes({ userId: 333 });
+
+      expect(typeof result).toBe("string");
+      expect(result).toContain("You must be in a voice channel to use this command.");
+    });
   });
 
   // =========================================================================
@@ -380,89 +347,32 @@ describe("Missing Coverage Tests", () => {
         { songName: "eisenbart.mp3" },
       );
 
-      expect(result).toContain("not in a voice channel");
+      expect(result).toContain("You must be in a voice channel to use this command.");
     });
   });
 
   // =========================================================================
   // REQ-CFG-002: oncePerDay setting
+  // NOTE: oncePerDay logic is currently unused since user:joined no longer
+  // triggers auto-intro (BUG-002 fix). The setting registration is still
+  // tested via REQ-CFG-004. When voice:user_joined is available and auto-
+  // intro is re-enabled, these tests should be restored.
   // =========================================================================
 
   describe("REQ-CFG-002 — oncePerDay setting", () => {
-    it("[REQ-CFG-002] should skip intro when oncePerDay=true and user was already greeted today", async () => {
-      await fs.mkdir(dataDir, { recursive: true });
-      await fs.mkdir(musicDir, { recursive: true });
-      await fs.writeFile(path.join(musicDir, "repeat.mp3"), "fake-mp3");
-      await fs.writeFile(
-        path.join(dataDir, "music-map.json"),
-        JSON.stringify({ RepeatUser: "repeat.mp3" }),
-      );
-      // Write today's date as the last greet
-      const today = new Date().toISOString().slice(0, 10);
-      await fs.writeFile(
-        path.join(dataDir, "daily-greets.json"),
-        JSON.stringify({ "555": today }),
-      );
-
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
-
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return true;
-        if (key === "oncePerDay") return true;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 555, username: "RepeatUser" });
-
-      // Debug log should say already greeted today
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
-      );
-      const alreadyGreeted = logMessages.filter((m: string) =>
-        m.includes("already greeted today"),
-      );
-      expect(alreadyGreeted.length).toBeGreaterThan(0);
-    }, 15000);
-
-    it("[REQ-CFG-002] should allow intro when oncePerDay=false even if user was already greeted today", async () => {
-      await fs.mkdir(dataDir, { recursive: true });
-      await fs.mkdir(musicDir, { recursive: true });
-      await fs.writeFile(path.join(musicDir, "again.mp3"), "fake-mp3");
-      await fs.writeFile(
-        path.join(dataDir, "music-map.json"),
-        JSON.stringify({ AgainUser: "again.mp3" }),
-      );
-      const today = new Date().toISOString().slice(0, 10);
-      await fs.writeFile(
-        path.join(dataDir, "daily-greets.json"),
-        JSON.stringify({ "666": today }),
-      );
-
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
-
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return true;
-        if (key === "oncePerDay") return false;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 666, username: "AgainUser" });
-
-      // Should NOT have logged "already greeted"
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
-      );
-      const alreadyGreeted = logMessages.filter((m: string) =>
-        m.includes("already greeted today"),
-      );
-      expect(alreadyGreeted).toHaveLength(0);
-    }, 15000);
+    it("[REQ-CFG-002] should register oncePerDay setting with default true", async () => {
+      const { ctx } = await loadPlugin(tmpDir);
+      const registerCalls = (ctx.settings.register as ReturnType<typeof mock>).mock.calls;
+      const settingsDefs = registerCalls[0][0] as Array<{
+        key: string;
+        type: string;
+        defaultValue: unknown;
+      }>;
+      const oncePerDay = settingsDefs.find((s) => s.key === "oncePerDay");
+      expect(oncePerDay).toBeDefined();
+      expect(oncePerDay!.type).toBe("boolean");
+      expect(oncePerDay!.defaultValue).toBe(true);
+    });
   });
 
   // =========================================================================
@@ -529,43 +439,26 @@ describe("Missing Coverage Tests", () => {
 
   // =========================================================================
   // REQ-DATA-002: Daily greets persistence
+  // NOTE: Daily greets are no longer written by user:joined (BUG-002 fix).
+  // When auto-intro is re-enabled via voice:user_joined, this test should
+  // be restored. For now, test that the daily-greets file is still read
+  // correctly (fallback behavior).
   // =========================================================================
 
   describe("REQ-DATA-002 — Daily greets persistence", () => {
-    it("[REQ-DATA-002] should write daily-greets.json with userId and today's date after greeting", async () => {
+    it("[REQ-DATA-002] should not crash when daily-greets.json exists on load", async () => {
       await fs.mkdir(dataDir, { recursive: true });
-      await fs.mkdir(musicDir, { recursive: true });
-      await fs.writeFile(path.join(musicDir, "greet.mp3"), "fake-mp3");
+      const today = new Date().toISOString().slice(0, 10);
       await fs.writeFile(
-        path.join(dataDir, "music-map.json"),
-        JSON.stringify({ GreetUser: "greet.mp3" }),
+        path.join(dataDir, "daily-greets.json"),
+        JSON.stringify({ "444": today }),
       );
 
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
-
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return true;
-        if (key === "oncePerDay") return true;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      // First we need an active channel so playback doesn't abort at the
-      // "no active voice channel" check. Trigger voice:runtime_initialized.
-      const initHandler = events.get("voice:runtime_initialized")!;
-      await initHandler({ channelId: 10 });
-
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 444, username: "GreetUser" });
-
-      // Check that daily-greets.json was written
-      const greetsPath = path.join(dataDir, "daily-greets.json");
-      const raw = await fs.readFile(greetsPath, "utf8");
-      const greets = JSON.parse(raw);
-      const today = new Date().toISOString().slice(0, 10);
-      expect(greets["444"]).toBe(today);
-    }, 15000);
+      // Plugin load should not throw
+      const { ctx } = await loadPlugin(tmpDir);
+      const errorMessages = (ctx.error as ReturnType<typeof mock>).mock.calls;
+      expect(errorMessages).toHaveLength(0);
+    });
   });
 
   // =========================================================================
@@ -681,41 +574,25 @@ describe("Missing Coverage Tests", () => {
   });
 
   // =========================================================================
-  // REQ-CFG-001: enabled setting (disabled behavior)
+  // REQ-CFG-001: enabled setting registration
+  // NOTE: enabled=false was previously tested via user:joined auto-intro
+  // which no longer exists (BUG-002 fix). Test setting registration instead.
   // =========================================================================
 
-  describe("REQ-CFG-001 — enabled=false behavior", () => {
-    it("[REQ-CFG-001] should not play intro when enabled=false", async () => {
-      await fs.mkdir(dataDir, { recursive: true });
-      await fs.mkdir(musicDir, { recursive: true });
-      await fs.writeFile(path.join(musicDir, "disabled.mp3"), "fake-mp3");
-      await fs.writeFile(
-        path.join(dataDir, "music-map.json"),
-        JSON.stringify({ DisabledUser: "disabled.mp3" }),
-      );
-
-      const { ctx, settings, events } = await loadPlugin(tmpDir);
-
-      settings.get = mock((key: string) => {
-        if (key === "enabled") return false;
-        if (key === "oncePerDay") return false;
-        if (key === "debug") return true;
-        if (key === "volume") return 25;
-        return undefined;
-      });
-
-      const userJoinedHandler = events.get("user:joined")!;
-      await userJoinedHandler({ userId: 111, username: "DisabledUser" });
-
-      // Debug log should indicate plugin is disabled
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
-      );
-      const disabledMessages = logMessages.filter((m: string) =>
-        m.includes("disabled") || m.includes("Plugin disabled"),
-      );
-      expect(disabledMessages.length).toBeGreaterThan(0);
-    }, 15000);
+  describe("REQ-CFG-001 — enabled setting", () => {
+    it("[REQ-CFG-001] should register an enabled setting with default true", async () => {
+      const { ctx } = await loadPlugin(tmpDir);
+      const registerCalls = (ctx.settings.register as ReturnType<typeof mock>).mock.calls;
+      const settingsDefs = registerCalls[0][0] as Array<{
+        key: string;
+        type: string;
+        defaultValue: unknown;
+      }>;
+      const enabledSetting = settingsDefs.find((s) => s.key === "enabled");
+      expect(enabledSetting).toBeDefined();
+      expect(enabledSetting!.type).toBe("boolean");
+      expect(enabledSetting!.defaultValue).toBe(true);
+    });
   });
 
   // =========================================================================
