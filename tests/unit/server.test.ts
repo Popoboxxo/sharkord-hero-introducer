@@ -42,7 +42,6 @@ describe("MockPluginContext", () => {
   it("[REQ-CFG-001] should have settings with get and set", () => {
     expect(typeof settings.get).toBe("function");
     expect(typeof settings.set).toBe("function");
-    expect(settings.get("enabled")).toBe(true);
     expect(settings.get("oncePerDay")).toBe(true);
   });
 

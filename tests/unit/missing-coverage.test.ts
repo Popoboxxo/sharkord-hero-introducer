@@ -185,50 +185,6 @@ describe("Missing Coverage Tests", () => {
   });
 
   // =========================================================================
-  // REQ-CMD-001: /hero-enable
-  // =========================================================================
-
-  describe("/hero-enable", () => {
-    it("[REQ-CMD-001] should set enabled to true and return confirmation", async () => {
-      const { ctx, settings, commands } = await loadPlugin(tmpDir);
-      const heroEnable = commands.get("hero-enable")!;
-      expect(heroEnable).toBeDefined();
-
-      const result = await heroEnable.executes({});
-      expect(result).toContain("enabled");
-
-      // Verify settings.set was called with enabled=true
-      const setCalls = (settings.set as ReturnType<typeof mock>).mock.calls;
-      const enableCall = setCalls.find(
-        (c: unknown[]) => c[0] === "enabled" && c[1] === true,
-      );
-      expect(enableCall).toBeDefined();
-    });
-  });
-
-  // =========================================================================
-  // REQ-CMD-002: /hero-disable
-  // =========================================================================
-
-  describe("/hero-disable", () => {
-    it("[REQ-CMD-002] should set enabled to false and return confirmation", async () => {
-      const { settings, commands } = await loadPlugin(tmpDir);
-      const heroDisable = commands.get("hero-disable")!;
-      expect(heroDisable).toBeDefined();
-
-      const result = await heroDisable.executes({});
-      expect(result).toContain("disabled");
-
-      // Verify settings.set was called with enabled=false
-      const setCalls = (settings.set as ReturnType<typeof mock>).mock.calls;
-      const disableCall = setCalls.find(
-        (c: unknown[]) => c[0] === "enabled" && c[1] === false,
-      );
-      expect(disableCall).toBeDefined();
-    });
-  });
-
-  // =========================================================================
   // REQ-CMD-003: /hero-stop
   // =========================================================================
 
@@ -578,22 +534,6 @@ describe("Missing Coverage Tests", () => {
   // NOTE: enabled=false was previously tested via user:joined auto-intro
   // which no longer exists (BUG-002 fix). Test setting registration instead.
   // =========================================================================
-
-  describe("REQ-CFG-001 — enabled setting", () => {
-    it("[REQ-CFG-001] should register an enabled setting with default true", async () => {
-      const { ctx } = await loadPlugin(tmpDir);
-      const registerCalls = (ctx.settings.register as ReturnType<typeof mock>).mock.calls;
-      const settingsDefs = registerCalls[0][0] as Array<{
-        key: string;
-        type: string;
-        defaultValue: unknown;
-      }>;
-      const enabledSetting = settingsDefs.find((s) => s.key === "enabled");
-      expect(enabledSetting).toBeDefined();
-      expect(enabledSetting!.type).toBe("boolean");
-      expect(enabledSetting!.defaultValue).toBe(true);
-    });
-  });
 
   // =========================================================================
   // REQ-CMD-004: Flexible filename resolution

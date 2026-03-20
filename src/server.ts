@@ -66,13 +66,6 @@ const onLoad = async (ctx: PluginContext) => {
   // ---------------------------------------------------------------------------
   const settings = await ctx.settings.register([
     {
-      key: "enabled",
-      name: "Plugin enabled",
-      description: "When disabled no intro music will be played.",
-      type: "boolean",
-      defaultValue: true,
-    },
-    {
       key: "oncePerDay",
       name: "Greet only once per day",
       description:
@@ -500,30 +493,6 @@ const onLoad = async (ctx: PluginContext) => {
   // ---------------------------------------------------------------------------
   // Commands
   // ---------------------------------------------------------------------------
-
-  // /hero-enable
-  ctx.commands.register({
-    name: "hero-enable",
-    description: "Enable the Hero Introducer plugin.",
-    args: [],
-    async executes(invokerCtx: TInvokerContext) {
-      debugLog(`/hero-enable called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
-      settings.set("enabled", true);
-      return "Hero Introducer enabled.";
-    },
-  });
-
-  // /hero-disable
-  ctx.commands.register({
-    name: "hero-disable",
-    description: "Disable the Hero Introducer plugin.",
-    args: [],
-    async executes(invokerCtx: TInvokerContext) {
-      debugLog(`/hero-disable called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
-      settings.set("enabled", false);
-      return "Hero Introducer disabled.";
-    },
-  });
 
   // /hero-stop – stop currently playing intro
   ctx.commands.register({
