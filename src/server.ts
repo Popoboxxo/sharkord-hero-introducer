@@ -61,6 +61,10 @@ const onLoad = async (ctx: PluginContext) => {
   await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(musicDir, { recursive: true });
 
+  // Resolve ffmpeg binary: prefer bundled bin/ inside plugin dir, fall back to $PATH
+  const ffmpegBin = path.join(ctx.path, "bin", "ffmpeg");
+  const ffmpegCmd = await fs.access(ffmpegBin).then(() => ffmpegBin).catch(() => "ffmpeg");
+
   // ---------------------------------------------------------------------------
   // Settings
   // ---------------------------------------------------------------------------
@@ -306,7 +310,7 @@ const onLoad = async (ctx: PluginContext) => {
 
     // ffmpeg args matching sharkord-music-bot exactly
     const ffmpegArgs = [
-      "ffmpeg",
+      ffmpegCmd,
       "-hide_banner",
       "-nostats",
       "-loglevel", settings.get("debug") ? "verbose" : "warning",
@@ -958,7 +962,7 @@ const onLoad = async (ctx: PluginContext) => {
 
       let ffmpegOk = false;
       try {
-        const probe = Bun.spawn({ cmd: ["ffmpeg", "-version"], stdout: "pipe", stderr: "ignore", stdin: "ignore" });
+        const probe = Bun.spawn({ cmd: [ffmpegCmd, "-version"], stdout: "pipe", stderr: "ignore", stdin: "ignore" });
         await probe.exited;
         ffmpegOk = true;
       } catch { /* ignore */ }
@@ -1076,7 +1080,7 @@ const onLoad = async (ctx: PluginContext) => {
       // ffmpeg args matching playAudio pipeline exactly
       const ffmpegArgs = testAudioPath
         ? [
-          "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
+          ffmpegCmd, "-hide_banner", "-nostats", "-loglevel", "warning",
           "-re", "-i", testAudioPath, "-vn", "-t", "5",
           "-af", "volume=0.25",
           "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "192k",
@@ -1084,7 +1088,7 @@ const onLoad = async (ctx: PluginContext) => {
           "-f", "rtp", `rtp://${listenInfo.ip}:${rtpPort}?pkt_size=1200`,
         ]
         : [
-          "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "warning",
+          ffmpegCmd, "-hide_banner", "-nostats", "-loglevel", "warning",
           "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "3",
           "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "192k",
           "-application", "audio", "-payload_type", "111", "-ssrc", String(ssrc),

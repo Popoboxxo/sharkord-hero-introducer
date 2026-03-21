@@ -12,7 +12,7 @@ A [Sharkord](https://sharkord.com) plugin that automatically plays a personalise
 | **MP3 and MPEG support** | Supports both `.mp3` and `.mpeg` audio files. |
 | **Flexible file matching** | File names can be specified with or without extension, case-insensitive. Duplicate names are detected. |
 | **On-demand playback** | The bot does not stay in the channel. Transport, producer, and stream are created per playback and cleaned up automatically. |
-| **Enable / disable** | `/hero-enable` and `/hero-disable` commands let admins switch the plugin on or off at any time. |
+| **Bundled ffmpeg support** | Plugin uses `bin/ffmpeg` from within the plugin directory if present; falls back to `ffmpeg` from `PATH`. |
 | **Once-per-day** | Optional setting ensures each user is greeted at most once per calendar day. |
 | **Volume control** | Server-side volume control (0-100%) applied via ffmpeg audio filter. |
 | **Self-service mapping** | Users can set their own intro with `/hero-set-me`. |
@@ -24,8 +24,8 @@ A [Sharkord](https://sharkord.com) plugin that automatically plays a personalise
 
 ## Requirements
 
-- [Sharkord](https://github.com/Sharkord/sharkord) server
-- [`ffmpeg`](https://ffmpeg.org/) available in `PATH` on the server machine
+- [Sharkord](https://github.com/Sharkord/sharkord) server >= 0.0.15
+- [`ffmpeg`](https://ffmpeg.org/) — place as `bin/ffmpeg` (or `bin/ffmpeg.exe` on Windows) inside the plugin directory, or make it available in `PATH`
 - [Bun](https://bun.sh/) runtime
 
 ---
@@ -45,14 +45,14 @@ cp -r dist/sharkord-hero-introducer ~/.config/sharkord/plugins/
 
 Restart Sharkord and activate the plugin in the Plugins settings page.
 
+**ffmpeg binary:** Place `ffmpeg` (Linux/macOS) or `ffmpeg.exe` (Windows) in the `bin/` directory inside the plugin folder. The plugin will automatically use it. If no bundled binary is found, it falls back to `ffmpeg` from `PATH`.
+
 ---
 
 ## Commands
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `/hero-enable` | -- | Enable the plugin (intros will be played). |
-| `/hero-disable` | -- | Disable the plugin (no intros until re-enabled). |
 | `/hero-stop` | -- | Stop all currently playing intros immediately. |
 | `/hero-set` | `<displayName> <audioFileName>` | Map an audio file to a display name. File name can be with or without extension. |
 | `/hero-remove` | `<displayName>` | Remove the intro mapping for a display name. |
@@ -77,6 +77,8 @@ Restart Sharkord and activate the plugin in the Plugins settings page.
 /hero-stop
 ```
 
+> **Note:** `/hero-enable` and `/hero-disable` have been removed. The plugin is always active once loaded. Use Sharkord's plugin management to enable or disable it.
+
 ---
 
 ## Plugin Settings
@@ -85,7 +87,6 @@ These can be changed in the Sharkord UI under **Plugins > Hero Introducer > Sett
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `enabled` | boolean | `true` | Master on/off switch. |
 | `oncePerDay` | boolean | `true` | When `true`, each user is greeted at most once per calendar day. |
 | `debug` | boolean | `false` | When `true`, detailed debug information is logged (user joins, mapping lookups, playback steps). |
 | `volume` | number | `25` | Playback volume (0-100%). Applied server-side via ffmpeg audio filter. |
