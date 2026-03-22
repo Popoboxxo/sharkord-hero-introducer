@@ -59,3 +59,4 @@ await Promise.all([
 ]);
 
 await fs.copyFile("package.json", `${outdir}/package.json`);
+await fs.copyFile("logo.png", `${outdir}/logo.png`);

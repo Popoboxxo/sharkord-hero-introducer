@@ -10,7 +10,7 @@
     "author": "Popoboxxo",
     "homepage": "https://github.com/Popoboxxo/sharkord-hero-introducer",
     "description": "Plays a personal MP3 intro for each user when they join a voice channel.",
-    "logo": "https://raw.githubusercontent.com/Popoboxxo/sharkord-hero-introducer/main/logo.png"
+    "logo": "logo.png"
   },
   "type": "module",
   "scripts": {
