@@ -34,8 +34,8 @@ function requiredEnv(name: string): string {
 
 async function callModel(prompt: string): Promise<string> {
   const apiKey = requiredEnv("ISSUE_AUTOFIX_API_KEY");
-  const model = process.env.ISSUE_AUTOFIX_MODEL ?? "gpt-5.4-mini";
-  const apiUrl = process.env.ISSUE_AUTOFIX_API_URL ?? "https://api.openai.com/v1/chat/completions";
+  const model = process.env.ISSUE_AUTOFIX_MODEL ?? "gpt-4o-mini";
+  const apiUrl = process.env.ISSUE_AUTOFIX_API_URL ?? "https://models.inference.ai.azure.com/chat/completions";
 
   const response = await fetch(apiUrl, {
     method: "POST",

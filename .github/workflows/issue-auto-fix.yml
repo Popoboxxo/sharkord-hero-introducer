@@ -28,7 +28,7 @@ jobs:
       - name: Generate autofix patch
         id: request
         env:
-          ISSUE_AUTOFIX_API_KEY: ${{ secrets.ISSUE_AUTOFIX_API_KEY }}
+          ISSUE_AUTOFIX_API_KEY: ${{ secrets.ISSUE_AUTOFIX_API_KEY || github.token }}
           ISSUE_AUTOFIX_API_URL: ${{ vars.ISSUE_AUTOFIX_API_URL }}
           ISSUE_AUTOFIX_MODEL: ${{ vars.ISSUE_AUTOFIX_MODEL }}
           PATCH_OUTPUT_PATH: ${{ runner.temp }}/autofix.patch
