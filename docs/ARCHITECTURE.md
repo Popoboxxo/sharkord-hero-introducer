@@ -1,6 +1,6 @@
 # Architektur — sharkord-hero-introducer
 
-> **Stand:** 18. Maerz 2026
+> **Stand:** 22. Maerz 2026
 > **Version:** 0.1.0
 
 ---
@@ -15,7 +15,53 @@ src/
   client.ts    -- Leerer Client-Entry (kein UI)
 
 build.ts       -- Bun Build-Script
+scripts/
+  github-autofix/
+    lib.ts                -- Trusted Helper fuer GitHub-Issue-Automatisierung
+    analyze-issue.ts      -- Read-only Analyse-Skript
+    request-autofix.ts    -- Automatisches Patch/PR-Skript fuer neue Issues
+.github/
+  workflows/
+    issue-auto-analysis.yml -- Read-only Analyse-Workflow
+    issue-auto-fix.yml      -- Vollautomatischer Autofix-Workflow fuer neue Issues
 ```
+
+---
+
+## Repo-Automatisierung
+
+Neben dem eigentlichen Sharkord-Plugin enthaelt das Repo jetzt eine zweistufige GitHub-Automatisierung fuer Issue-Bearbeitung.
+
+```
+GitHub Issue opened/reopened
+  |
+  v
+issue-auto-analysis.yml
+  - read-only permissions
+  - checkout default branch
+  - analyze-issue.ts
+  - JSON artifact with normalized issue data
+
+GitHub Issue opened
+  |
+  v
+issue-auto-fix.yml
+  - checkout default branch
+  - request-autofix.ts
+  - OpenAI-compatible patch generation
+  - patch allowlist: src/**, docs/**, README.md
+  - bun test + bun run build
+  - draft PR only on successful diff
+```
+
+### Trust Boundaries
+
+| Bereich | Vertrauensniveau | Schutzmassnahmen |
+|--------|------------------|------------------|
+| GitHub-Issue-Inhalt | Untrusted | `sanitizeText()`, Normalisierung zu JSON, keine direkte Shell-Auswertung |
+| Analyse-Workflow | Read-only trusted | Keine Secrets, nur `contents: read`, Checkout des Default-Branch |
+| Autofix-Workflow | Privileged trusted | Job startet automatisch bei neuen Issues, nutzt fest versionierte Repo-Skripte, erzwingt Patch-Allowlist und Validierung vor Draft-PR |
+| Modell-Antwort | Partially trusted | Muss JSON liefern, Diff-Format enthalten und darf nur `src/`, `docs/`, `README.md` aendern |
 
 ---
 

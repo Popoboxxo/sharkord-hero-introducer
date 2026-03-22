@@ -1,0 +1,95 @@
+name: issue-auto-fix
+
+on:
+  issues:
+    types:
+      - opened
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autofix:
+    if: ${{ github.event.issue.pull_request == null }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Generate autofix patch
+        id: request
+        env:
+          ISSUE_AUTOFIX_API_KEY: ${{ secrets.ISSUE_AUTOFIX_API_KEY }}
+          ISSUE_AUTOFIX_API_URL: ${{ vars.ISSUE_AUTOFIX_API_URL }}
+          ISSUE_AUTOFIX_MODEL: ${{ vars.ISSUE_AUTOFIX_MODEL }}
+          PATCH_OUTPUT_PATH: ${{ runner.temp }}/autofix.patch
+          PR_BODY_OUTPUT_PATH: ${{ runner.temp }}/autofix-pr.md
+        run: bun scripts/github-autofix/request-autofix.ts
+
+      - name: Create working branch
+        run: git checkout -b "${BRANCH_NAME}"
+        env:
+          BRANCH_NAME: ${{ steps.request.outputs.branch_name }}
+
+      - name: Apply generated patch
+        run: git apply --whitespace=nowarn "${PATCH_PATH}"
+        env:
+          PATCH_PATH: ${{ steps.request.outputs.patch_path }}
+
+      - name: Validate changes
+        run: |
+          bun test
+          bun run build
+
+      - name: Check whether a diff exists
+        id: diff
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop when no change was produced
+        if: ${{ steps.diff.outputs.has_diff != 'true' }}
+        run: |
+          echo "No diff produced by autofix request."
+          exit 1
+
+      - name: Commit and push changes
+        if: ${{ steps.diff.outputs.has_diff == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "${COMMIT_MESSAGE}"
+          git push --set-upstream origin "${BRANCH_NAME}"
+        env:
+          BRANCH_NAME: ${{ steps.request.outputs.branch_name }}
+          COMMIT_MESSAGE: ${{ steps.request.outputs.commit_message }}
+
+      - name: Create pull request
+        if: ${{ steps.diff.outputs.has_diff == 'true' }}
+        run: |
+          gh pr create \
+            --draft \
+            --title "${PR_TITLE}" \
+            --body-file "${PR_BODY_PATH}" \
+            --base "${BASE_BRANCH}" \
+            --head "${BRANCH_NAME}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_TITLE: ${{ steps.request.outputs.pr_title }}
+          PR_BODY_PATH: ${{ steps.request.outputs.pr_body_path }}
+          BRANCH_NAME: ${{ steps.request.outputs.branch_name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}

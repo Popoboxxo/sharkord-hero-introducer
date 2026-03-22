@@ -49,6 +49,36 @@ Restart Sharkord and activate the plugin in the Plugins settings page.
 
 ---
 
+## GitHub Issue Autofix Workflows
+
+This repository includes a two-stage GitHub automation flow for issue handling:
+
+1. `issue-auto-analysis.yml` runs automatically for new or reopened issues with read-only permissions.
+2. `issue-auto-fix.yml` runs automatically for each newly opened issue and creates a draft PR when a fix passes validation.
+
+The privileged workflow expects an OpenAI-compatible API configuration:
+
+- Secret: `ISSUE_AUTOFIX_API_KEY`
+- Variable: `ISSUE_AUTOFIX_MODEL` (optional, defaults to `gpt-5.4-mini`)
+- Variable: `ISSUE_AUTOFIX_API_URL` (optional, defaults to `https://api.openai.com/v1/chat/completions`)
+
+Safety model:
+
+- Issue analysis never receives write permissions or repository secrets.
+- The fixing workflow runs from trusted default-branch workflow code and only creates a draft PR after a valid patch, successful tests and a successful build.
+- Untrusted issue text is sanitized and passed as serialized data into repository-owned Bun scripts.
+- Generated patches may only touch `src/`, `docs/` or `README.md`.
+- A draft pull request is created only if a patch applies cleanly, produces a diff, and both `bun test` and `bun run build` succeed.
+
+Repository runbook:
+
+1. Open an issue. The read-only analysis workflow stores an `issue-analysis-<number>` artifact.
+2. The autofix workflow starts automatically and attempts to generate a patch.
+3. Ensure the repository has `ISSUE_AUTOFIX_API_KEY` configured and optionally `ISSUE_AUTOFIX_MODEL` or `ISSUE_AUTOFIX_API_URL`.
+4. Review the created draft PR manually before converting or merging it.
+
+---
+
 ## Commands
 
 | Command | Arguments | Description |

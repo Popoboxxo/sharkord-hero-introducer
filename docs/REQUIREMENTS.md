@@ -1,7 +1,7 @@
 # Requirements – sharkord-hero-introducer
 
 > **Version:** 0.1.0
-> **Stand:** 17. März 2026
+> **Stand:** 22. März 2026
 > **Alleinige Quelle der Wahrheit** für alle funktionalen und nichtfunktionalen Anforderungen.
 
 ---
@@ -262,6 +262,30 @@
 
 ---
 
+## 8 · GitHub-Automatisierung (REQ-AUTO)
+
+| REQ-ID | Beschreibung | Status | Priorität | Traceability |
+|--------|-------------|--------|-----------|--------------|
+| REQ-AUTO-001 | Beim Erstellen oder Wiedereroeffnen eines GitHub-Issues startet automatisch ein unprivilegierter Analyse-Workflow. Der Workflow laeuft ausschliesslich mit Read-Berechtigungen auf vertrauenswuerdigem Workflow-Code des Default-Branch, verwendet keine Repository-Secrets und verarbeitet Titel, Beschreibung, Labels und Formularfelder des Issues ausschliesslich als Dateninput. Das Ergebnis der Analyse wird als strukturiertes JSON-Artefakt abgelegt. | Implemented | Should | `.github/workflows/issue-auto-analysis.yml`, `scripts/github-autofix/analyze-issue.ts`, `scripts/github-autofix/lib.ts` |
+| REQ-AUTO-002 | Ein separater GitHub-Workflow startet automatisch bei jedem neuen GitHub-Issue und fuehrt einen Fix-Versuch auf einem temporaeren Branch aus. Bei erfolgreicher Validierung erstellt der Workflow automatisch einen Draft-Pull-Request gegen den Default-Branch. Der Workflow verwendet nur vertrauenswuerdigen Workflow-Code des Default-Branch, bricht ohne Diff oder bei fehlgeschlagener Validierung ab und erstellt dann keinen Pull Request. | Implemented | Should | `.github/workflows/issue-auto-fix.yml`, `scripts/github-autofix/request-autofix.ts`, `scripts/github-autofix/lib.ts` |
+| REQ-AUTO-003 | Untrusted Inhalte aus GitHub-Issues duerfen in keinem Schritt mit Write-Rechten oder unter Zugriff auf Secrets direkt als Shell-Code, Skript-Code, Workflow-Konfiguration, Ref, Dateipfad oder Action-Input mit Kommandoauswertung ausgefuehrt werden. Alle aus dem Issue uebernommenen Daten sind vor der Weiterverarbeitung zu validieren, zu normalisieren und ausschliesslich als serialisierte Daten an fest im Repository versionierte Automatisierungsskripte zu uebergeben. Generierte Patches duerfen ausschliesslich Dateien unter `src/`, `docs/` oder `README.md` aendern. | Implemented | Must | `.github/workflows/issue-auto-analysis.yml`, `.github/workflows/issue-auto-fix.yml`, `scripts/github-autofix/lib.ts`, `tests/unit/github-autofix.test.ts` |
+
+### Abnahmekriterien REQ-AUTO
+
+| REQ-ID | Abnahmekriterium |
+|--------|------------------|
+| REQ-AUTO-001-A | Neues oder wiedereroeffnetes GitHub-Issue wird erstellt → unprivilegierter Analyse-Workflow startet automatisch auf dem Default-Branch und verwendet nur Read-Berechtigungen. |
+| REQ-AUTO-001-B | Analyse-Workflow erzeugt ein JSON-Artefakt mit normalisierten Issue-Daten, Dateikandidaten und Analyse-Zusammenfassung. |
+| REQ-AUTO-001-C | Issue-Text mit Shell-Metazeichen, GitHub-Expressions oder Pfad-Traversal wird ausschliesslich als Daten behandelt; der Workflow fuehrt daraus keinen zusaetzlichen Befehl, Ref-Wechsel oder Dateizugriff aus. |
+| REQ-AUTO-002-A | Neues GitHub-Issue wird erstellt → der schreibende Workflow startet automatisch, erzeugt einen temporaeren Branch und versucht den Fix. |
+| REQ-AUTO-002-B | Der schreibende Workflow erstellt nur dann einen Draft-Pull-Request, wenn nach dem Fix-Versuch ein Diff vorliegt und sowohl `bun test` als auch `bun run build` erfolgreich sind. |
+| REQ-AUTO-002-C | Schlaegt der Fix-Versuch fehl, entsteht kein Diff oder scheitert die Validierung, wird kein Pull Request erstellt. |
+| REQ-AUTO-003-A | Ein Issue mit Inhalt wie Shell-Befehlen, Pfad-Traversal oder GitHub-Expressions beeinflusst weder den auszucheckenden Ref noch den Branch-Namen noch die auszufuehrenden Skripte. |
+| REQ-AUTO-003-B | Der unprivilegierte Analyse-Workflow besitzt keine Write-Berechtigungen fuer `contents`, `pull-requests`, `issues` oder `actions`. |
+| REQ-AUTO-003-C | Der privilegierte Workflow verwendet nur fest im Repository vorhandene Skripte, uebergibt Issue-Daten ausschliesslich in validierter, serialisierter Form und verwirft Patches ausserhalb von `src/`, `docs/` oder `README.md`. |
+
+---
+
 ## Bekannte Bugs
 
 | ID | Bereich | Beschreibung | Status |
@@ -334,6 +358,9 @@
 | REQ-DBG-006 | `src/server.ts` L425–L429 | — (offen) |
 | REQ-DBG-007 | `src/server.ts` L208 | — (offen) |
 | REQ-DBG-008 | `src/server.ts` L803–L1166 | — (offen) |
+| REQ-AUTO-001 | `.github/workflows/issue-auto-analysis.yml`, `scripts/github-autofix/analyze-issue.ts`, `scripts/github-autofix/lib.ts` | `tests/unit/github-autofix.test.ts` |
+| REQ-AUTO-002 | `.github/workflows/issue-auto-fix.yml`, `scripts/github-autofix/request-autofix.ts`, `scripts/github-autofix/lib.ts` | `tests/unit/github-autofix.test.ts` |
+| REQ-AUTO-003 | `.github/workflows/issue-auto-analysis.yml`, `.github/workflows/issue-auto-fix.yml`, `scripts/github-autofix/lib.ts` | `tests/unit/github-autofix.test.ts` |
 
 ---
 
@@ -375,6 +402,7 @@
 - **REQ-LIFE-001, REQ-LIFE-002** — onLoad/onUnload (`tests/unit/server.test.ts`)
 - **REQ-LIFE-003, REQ-NF-003** — Build-Prozess (`tests/unit/build.test.ts`)
 - **REQ-DBG-001** — Debug-Logging ein/aus (`tests/unit/server.test.ts`)
+- **REQ-AUTO-001 bis REQ-AUTO-003** — GitHub-Issue-Analyse, automatische Draft-PR-Erstellung und Patch-Parsing (`tests/unit/github-autofix.test.ts`)
 
 ### Empfehlung:
 1. **Hoechste Prioritaet:** Implementierung von REQ-CORE-013 und REQ-CORE-014 (BUG-002 — Bot joint Channel ohne User). Danach REQ-CMD-016 (Voice-Channel-Prüfung konsolidieren).
@@ -402,3 +430,4 @@
 | 2026-03-17 | **Vollstaendige Requirements-Analyse** gegen aktuellen Codestand (server.ts 1201 Zeilen). Neue REQs: REQ-CORE-010 (Intro-Delay), REQ-CORE-011 (Channel-Close Session-Cleanup), REQ-CMD-014 (`/hero-diagnose` als Command-REQ). Korrekturen: REQ-CORE-001 um Delay und Channel-Auswahl praezisiert, REQ-CORE-006 von "Fehler geloggt" auf "Debug-Log" korrigiert, REQ-CMD-010 Beschreibung an tatsaechliche Implementierung angepasst (alle Parameter statt nur invokerCtx), REQ-DBG-008 auf 7 Stages (0-6) aktualisiert. Alle Traceability-Zeilennummern gegen server.ts abgeglichen und aktualisiert (REQ-LIFE-001/002, REQ-CFG-003, REQ-CMD-010, REQ-DBG-008). Traceability-Matrix: REQ-CORE-004/007/008/CFG-005 Test-Abdeckung nachgetragen (play-audio.test.ts, play-audio-comparison.test.ts). Lueckenanalyse vollstaendig ueberarbeitet. | Requirements Engineer |
 | 2026-03-20 | **BUG-002:** Bot betritt Voice-Channel ohne anwesenden User dokumentiert. Neue REQs: REQ-CORE-013 (Channel-Join nur bei legitimem Trigger), REQ-CORE-014 (Channel-Auswahl anhand voiceChannelId aus user:joined-Event mit Fallback-Logik), REQ-CMD-016 (Voice-Channel-Pflichtprüfung vor Wiedergabe fuer alle Audio-Commands). Traceability-Matrix und Lueckenanalyse aktualisiert. Empfehlung: REQ-CORE-013/014 haben hoechste Implementierungsprioritaet. | Requirements Engineer |
 | 2026-03-20 | REQ-CMD-017 (`/hero-search-music`) hinzugefuegt: Command durchsucht Sharkord-SQLite-DB nach Audio-Anhaengen und kopiert gefundene Dateien ins Plugin-Music-Verzeichnis. Prioritaet: Could. 8 Abnahmekriterien (REQ-CMD-017-A bis -H) definiert. Traceability-Matrix und Lueckenanalyse aktualisiert. Feasibility bestaetigt (Bun SQLite, bekanntes DB-Schema, Dateisystem-Zugriff). | Requirements Engineer |
+| 2026-03-22 | REQ-AUTO-001 bis REQ-AUTO-003 hinzugefuegt und praezisiert: Zweistufige GitHub-Issue-Automatisierung mit read-only Analyse-Workflow, vollautomatischem Fix-Workflow fuer neue Issues, automatischer Draft-PR-Erstellung, OpenAI-kompatibler Patch-Erzeugung, Build/Test-Gate und Sicherheitsgrenzen fuer untrusted Issue-Inhalte. Traceability-Matrix und Testabdeckung aktualisiert. | Orchestrator |

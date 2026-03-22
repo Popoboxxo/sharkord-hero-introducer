@@ -1,6 +1,6 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 20. Maerz 2026
+> **Stand:** 22. Maerz 2026
 > **Version:** 0.1.0
 
 ---
@@ -12,6 +12,11 @@
 | `src/server.ts` | ~1334 | Plugin-Server-Entry-Point: Lifecycle, Commands, Events, Playback, Queue, Diagnose |
 | `src/client.ts` | 2 | Leerer Client-Entry-Point (kein UI) |
 | `build.ts` | ~62 | Bun Build-Script (Server + Client + package.json kopieren) |
+| `.github/workflows/issue-auto-analysis.yml` | ~30 | Read-only GitHub-Workflow fuer automatische Issue-Analyse |
+| `.github/workflows/issue-auto-fix.yml` | ~75 | GitHub-Workflow fuer automatische Fix-Versuche und Draft-PR-Erstellung bei neuen Issues |
+| `scripts/github-autofix/lib.ts` | ~310 | Trusted Helper fuer Issue-Normalisierung, Branch-Sanitizing, Dateiauswahl, Patch-Parsing und Patch-Allowlist |
+| `scripts/github-autofix/analyze-issue.ts` | ~45 | Liest `issues`-Events und schreibt ein Analyse-Artefakt |
+| `scripts/github-autofix/request-autofix.ts` | ~140 | Liest neue GitHub-Issues, erzeugt einen Patch-Versuch und schreibt Patch/PR-Metadaten |
 
 ---
 
@@ -248,6 +253,69 @@ export {};
 Kopiert `package.json` -> `dist/sharkord-hero-introducer/package.json`.
 
 Output-Verzeichnis: `dist/sharkord-hero-introducer/`
+
+---
+
+## GitHub-Automatisierung
+
+### Workflow 1: Issue-Analyse
+
+Datei: `.github/workflows/issue-auto-analysis.yml`
+
+**REQ:** REQ-AUTO-001, REQ-AUTO-003
+
+**Trigger:** `issues` mit `opened` und `reopened`
+
+**Sicherheitsprofil:** Nur `contents: read`, keine Secrets, Checkout des Default-Branch.
+
+**Ablauf:**
+
+1. `actions/checkout` auf dem Default-Branch
+2. `oven-sh/setup-bun`
+3. `bun scripts/github-autofix/analyze-issue.ts`
+4. Upload des JSON-Artefakts `issue-analysis-<number>`
+
+### Workflow 2: Automatischer Draft-PR
+
+Datei: `.github/workflows/issue-auto-fix.yml`
+
+**REQ:** REQ-AUTO-002, REQ-AUTO-003
+
+**Trigger:** `issues` mit `opened`
+
+**Sicherheitsprofil:** Write-Rechte nur in diesem zweiten Workflow. Issue-Text wird ausschliesslich als Daten an trusted Repository-Skripte uebergeben. Draft-PR nur nach Patch-Allowlist, gruenem Testlauf und erfolgreichem Build.
+
+**Ablauf:**
+
+1. Checkout des Default-Branch
+2. `bun scripts/github-autofix/request-autofix.ts`
+3. Trusted Skript normalisiert das Issue und ruft ein OpenAI-kompatibles Modell auf
+4. Das Modell liefert ein JSON-Objekt mit Unified Diff und PR-Metadaten; der Diff wird vor der Rueckgabe auf erlaubte Ziele (`src/**`, `docs/**`, `README.md`) geprueft
+5. Workflow erstellt Branch, wendet den Patch an, fuehrt `bun test` und `bun run build` aus
+6. Nur bei erfolgreichem Diff und gruener Validierung werden Commit, Push und ein Draft-Pull-Request erstellt
+
+### scripts/github-autofix/lib.ts
+
+Trusted Helper fuer die gesamte GitHub-Automatisierung.
+
+**Wichtige Exporte:**
+
+| Funktion | Rolle |
+|----------|------|
+| `sanitizeText()` | Entfernt Kontrollzeichen, normalisiert Whitespace und begrenzt Laengen |
+| `normalizeIssue()` | Ueberfuehrt rohes Issue-Payload in eine stabile, serialisierte Struktur |
+| `buildAutofixBranchName()` | Erzeugt einen sicheren Branch-Namen ohne untrusted Sonderzeichen |
+| `inferSuggestedFiles()` | Leitet Dateikandidaten aus Issue-Keywords und Repo-Dateiliste ab |
+| `parseModelPlan()` | Parst das Modell-JSON, extrahiert den Unified Diff und erzwingt die Patch-Allowlist |
+| `assertAllowedPatchTargets()` | Verhindert Aenderungen ausserhalb von `src/`, `docs/` und `README.md` |
+
+### scripts/github-autofix/analyze-issue.ts
+
+Liest `GITHUB_EVENT_PATH`, normalisiert `event.issue`, waehlt Dateikandidaten per `inferSuggestedFiles()` aus und schreibt ein JSON-Artefakt. Zusaetzlich wird eine kurze Job-Summary in `GITHUB_STEP_SUMMARY` geschrieben.
+
+### scripts/github-autofix/request-autofix.ts
+
+Liest `issues`-Events, normalisiert neu erstellte Issues, sammelt Repo-Kontext ueber `git ls-files`, uebergibt nur selektierte Dateien an ein OpenAI-kompatibles Modell und schreibt Patch sowie PR-Body in temp-Dateien fuer den Workflow.
 
 ---
 
