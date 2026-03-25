@@ -187,4 +187,4 @@ bun test tests/unit # Run unit tests only
 
 ## License
 
-MIT
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) license. See the [LICENSE](LICENSE) file for details.
