@@ -60,7 +60,7 @@ interface CommandDefinition {
   name: string;
   description: string;
   args: unknown[];
-  executes: (...args: unknown[]) => Promise<string>;
+  execute: (...args: unknown[]) => Promise<string>;
 }
 
 async function loadPlugin(tmpDir: string) {
@@ -136,7 +136,7 @@ describe("Plugin onLoad – commands & data", () => {
     it("[REQ-CMD-004] should reject non-.mp3/.mpeg file names", async () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
-      const result = await heroSet.executes(
+      const result = await heroSet.execute(
         {},
         { displayName: "TestUser", audioFileName: "intro.wav" },
       );
@@ -152,7 +152,7 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
-      const result = await heroSet.executes(
+      const result = await heroSet.execute(
         {},
         { displayName: "TestUser", audioFileName: "missing.mp3" },
       );
@@ -166,7 +166,7 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
-      const result = await heroSet.executes(
+      const result = await heroSet.execute(
         {},
         { displayName: "TestUser", audioFileName: "intro.mp3" },
       );
@@ -186,7 +186,7 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
-      const result = await heroSet.executes(
+      const result = await heroSet.execute(
         {},
         { displayName: "MpegUser", audioFileName: "intro.mpeg" },
       );
@@ -212,7 +212,7 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroRemove = commands.get("hero-remove")!;
-      const result = await heroRemove.executes({}, { displayName: "TestUser" });
+      const result = await heroRemove.execute({}, { displayName: "TestUser" });
       expect(result).toContain("Intro removed for TestUser");
 
       // Verify persistence
@@ -224,7 +224,7 @@ describe("Plugin onLoad – commands & data", () => {
     it("[REQ-CMD-005] should return info when no mapping exists for the display name", async () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroRemove = commands.get("hero-remove")!;
-      const result = await heroRemove.executes({}, { displayName: "UnknownUser" });
+      const result = await heroRemove.execute({}, { displayName: "UnknownUser" });
       expect(result).toContain("No intro configured for UnknownUser");
     });
   });
@@ -241,7 +241,7 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroList = commands.get("hero-list")!;
-      const result = await heroList.executes({});
+      const result = await heroList.execute({});
 
       expect(result).toContain("Alice: alice-intro.mp3");
       expect(result).toContain("Bob: bob-theme.mp3");
@@ -250,7 +250,7 @@ describe("Plugin onLoad – commands & data", () => {
     it("[REQ-CMD-006] should return info when no mappings exist", async () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroList = commands.get("hero-list")!;
-      const result = await heroList.executes({});
+      const result = await heroList.execute({});
       expect(result).toContain("No intro mappings configured yet");
     });
   });
@@ -266,7 +266,7 @@ describe("Plugin onLoad – commands & data", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroFiles = commands.get("hero-files")!;
-      const result = await heroFiles.executes({});
+      const result = await heroFiles.execute({});
 
       expect(result).toContain("intro.mp3");
       expect(result).toContain("theme.mpeg");
@@ -276,7 +276,7 @@ describe("Plugin onLoad – commands & data", () => {
     it("[REQ-CMD-007] should return info when no audio files exist", async () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroFiles = commands.get("hero-files")!;
-      const result = await heroFiles.executes({});
+      const result = await heroFiles.execute({});
       expect(result).toContain("No audio files found");
     });
   });
@@ -458,7 +458,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroSetMe = commands.get("hero-set-me")!;
       expect(heroSetMe).toBeDefined();
 
-      const result = await heroSetMe.executes(
+      const result = await heroSetMe.execute(
         { userId: 42, currentVoiceChannelId: 1 },
         { audioFileName: "my-intro.mp3" },
       );
@@ -480,7 +480,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroSetMe = commands.get("hero-set-me")!;
       expect(heroSetMe).toBeDefined();
 
-      const result = await heroSetMe.executes(
+      const result = await heroSetMe.execute(
         { userId: 9999, currentVoiceChannelId: 1 },
         { audioFileName: "my-intro.mp3" },
       );
@@ -499,7 +499,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroSetMe = commands.get("hero-set-me")!;
       expect(heroSetMe).toBeDefined();
 
-      const result = await heroSetMe.executes(
+      const result = await heroSetMe.execute(
         { userId: 42, currentVoiceChannelId: 1 },
         { audioFileName: "intro.wav" },
       );
@@ -530,7 +530,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroPlayMe = commands.get("hero-play-me")!;
       expect(heroPlayMe).toBeDefined();
 
-      const result = await heroPlayMe.executes(
+      const result = await heroPlayMe.execute(
         { userId: 42, currentVoiceChannelId: 5 },
       );
 
@@ -550,7 +550,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroPlayMe = commands.get("hero-play-me")!;
       expect(heroPlayMe).toBeDefined();
 
-      const result = await heroPlayMe.executes(
+      const result = await heroPlayMe.execute(
         { userId: 42, currentVoiceChannelId: 5 },
       );
 
@@ -573,7 +573,7 @@ describe("Plugin onLoad – commands & data", () => {
       expect(heroPlayMe).toBeDefined();
 
       // No currentVoiceChannelId → error
-      const result = await heroPlayMe.executes(
+      const result = await heroPlayMe.execute(
         { userId: 42 },
       );
 
@@ -585,7 +585,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroPlayMe = commands.get("hero-play-me")!;
       expect(heroPlayMe).toBeDefined();
 
-      const result = await heroPlayMe.executes(
+      const result = await heroPlayMe.execute(
         { userId: 9999, currentVoiceChannelId: 5 },
       );
 
@@ -609,7 +609,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroPlay = commands.get("hero-play")!;
       expect(heroPlay).toBeDefined();
 
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { displayName: "Alice" },
       );
@@ -623,12 +623,28 @@ describe("Plugin onLoad – commands & data", () => {
       const heroPlay = commands.get("hero-play")!;
       expect(heroPlay).toBeDefined();
 
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { displayName: "UnknownUser" },
       );
 
       expect(result).toContain("No intro configured");
+    });
+
+    it("[REQ-CMD-012] should fallback to file lookup when displayName mapping does not exist", async () => {
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "vibecodin.mpeg"), "fake-mpeg");
+
+      const { commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
+      expect(heroPlay).toBeDefined();
+
+      const result = await heroPlay.execute(
+        { userId: 1, currentVoiceChannelId: 5 },
+        { displayName: "vibecodin" },
+      );
+
+      expect(result).toContain("Playing intro for vibecodin: vibecodin.mpeg");
     });
 
     it("[REQ-CMD-012] should return error when displayName has mapping but file does not exist", async () => {
@@ -642,7 +658,7 @@ describe("Plugin onLoad – commands & data", () => {
       const heroPlay = commands.get("hero-play")!;
       expect(heroPlay).toBeDefined();
 
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { displayName: "Alice" },
       );
@@ -664,7 +680,7 @@ describe("Plugin onLoad – commands & data", () => {
       expect(heroPlay).toBeDefined();
 
       // No currentVoiceChannelId
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1 },
         { displayName: "Alice" },
       );

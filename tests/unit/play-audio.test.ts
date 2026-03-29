@@ -21,7 +21,7 @@ interface CommandDefinition {
   name: string;
   description: string;
   args: unknown[];
-  executes: (...args: unknown[]) => Promise<string>;
+  execute: (...args: unknown[]) => Promise<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ describe("playAudio pipeline", () => {
     const heroPlayMe = result.commands.get("hero-play-me")!;
     expect(heroPlayMe).toBeDefined();
 
-    const response = await heroPlayMe.executes(
+    const response = await heroPlayMe.execute(
       { userId: 42, currentVoiceChannelId: 5 },
     );
 
@@ -277,7 +277,7 @@ describe("playAudio pipeline", () => {
     const { commands: cmds2 } = await loadPlugin(tmpDir);
     spawnCalls = [];
     const heroPlayMe = cmds2.get("hero-play-me")!;
-    await heroPlayMe.executes({ userId: 42, currentVoiceChannelId: 5 });
+    await heroPlayMe.execute({ userId: 42, currentVoiceChannelId: 5 });
 
     expect(spawnCalls.length).toBeGreaterThanOrEqual(1);
     const cmd = spawnCalls[0].cmd;
@@ -349,13 +349,13 @@ describe("playAudio pipeline", () => {
     const heroPlayMe = commands.get("hero-play-me")!;
 
     // First playback
-    await heroPlayMe.executes({ userId: 42, currentVoiceChannelId: 5 });
+    await heroPlayMe.execute({ userId: 42, currentVoiceChannelId: 5 });
     expect(spawnCalls.length).toBe(1);
 
     const firstFfmpegMock = spawnCalls[0];
 
     // Second playback for same user+channel
-    await heroPlayMe.executes({ userId: 42, currentVoiceChannelId: 5 });
+    await heroPlayMe.execute({ userId: 42, currentVoiceChannelId: 5 });
     expect(spawnCalls.length).toBe(2);
 
     // The first ffmpeg process should have been killed

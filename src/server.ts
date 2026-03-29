@@ -264,14 +264,57 @@ const onLoad = async (ctx: PluginContext) => {
   // create a consumer via onNewProducer, then spawns ffmpeg. Cleans up
   // everything after playback finishes — the bot does NOT stay in the channel.
 
+  interface VoiceActionsLike {
+    getRouter(channelId: number): {
+      createPlainTransport(params: unknown): Promise<{
+        tuple: { localPort: number };
+        produce(params: unknown): Promise<{
+          id: string;
+          on(event: string, handler: (payload: unknown) => void): void;
+          getStats(): Promise<unknown>;
+          close(): void;
+        }>;
+        close(): void;
+      }>;
+    };
+    getListenInfo(): Promise<{ ip: string; announcedAddress: string }>;
+    createStream(params: {
+      key: string;
+      channelId: number;
+      title: string;
+      avatarUrl: string;
+      producers: { audio: unknown };
+    }): { remove(): void };
+  }
+
+  function resolveVoiceActions(runtimeCtx?: TInvokerContext): VoiceActionsLike {
+    const fromRuntime = (runtimeCtx as { actions?: { voice?: unknown } } | undefined)?.actions?.voice;
+    const fromPluginCtx = (ctx as { actions?: { voice?: unknown } }).actions?.voice;
+    const candidate = (fromRuntime ?? fromPluginCtx) as Partial<VoiceActionsLike> | undefined;
+
+    if (
+      !candidate
+      || typeof candidate.getRouter !== "function"
+      || typeof candidate.getListenInfo !== "function"
+      || typeof candidate.createStream !== "function"
+    ) {
+      throw new Error("Voice actions are unavailable in this command/event context.");
+    }
+
+    return candidate as VoiceActionsLike;
+  }
+
   async function playAudio(
     channelId: number,
     userId: number,
     label: string,
     mp3Path: string,
+    runtimeCtx?: TInvokerContext,
   ): Promise<void> {
     const procKey = `${channelId}-${userId}`;
     debugLog(`playAudio: channelId=${channelId}, userId=${userId}, label="${label}", path="${mp3Path}", activeSessions=${activeSessions.size}, activeChannels=[${[...activeChannels].join(", ")}]`);
+
+    const voiceActions = resolveVoiceActions(runtimeCtx);
 
     // Stop any existing playback for this user in this channel
     const existing = activeSessions.get(procKey);
@@ -283,8 +326,8 @@ const onLoad = async (ctx: PluginContext) => {
     }
 
     // 1. Create transport + producer (matching sharkord-music-bot exactly)
-    const router = ctx.actions.voice.getRouter(channelId);
-    const listenInfo = await ctx.actions.voice.getListenInfo();
+    const router = voiceActions.getRouter(channelId);
+    const listenInfo = await voiceActions.getListenInfo();
     debugLog(`listenInfo: ip=${listenInfo.ip}, announcedAddress=${listenInfo.announcedAddress}`);
 
     const transport = await router.createPlainTransport({
@@ -355,7 +398,7 @@ const onLoad = async (ctx: PluginContext) => {
     debugLog(`ffmpeg spawned — PID=${ffmpeg.pid}`);
 
     // 3. Register stream with Sharkord (matching sharkord-music-bot exactly)
-    const stream = ctx.actions.voice.createStream({
+    const stream = voiceActions.createStream({
       key: `hero-intro-${channelId}-${userId}`,
       channelId,
       title: `Hero Intro: ${label}`,
@@ -436,8 +479,9 @@ const onLoad = async (ctx: PluginContext) => {
     userId: number,
     label: string,
     mp3Path: string,
+    runtimeCtx?: TInvokerContext,
   ): Promise<void> {
-    await playAudio(channelId, userId, label, mp3Path);
+    await playAudio(channelId, userId, label, mp3Path, runtimeCtx);
     const procKey = `${channelId}-${userId}`;
     const session = activeSessions.get(procKey);
     if (session) {
@@ -603,7 +647,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-stop",
     description: "Stop the currently playing intro music.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       debugLog(`/hero-stop called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       if (activeSessions.size === 0) {
         return "No intro is currently playing.";
@@ -638,7 +682,7 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
     ],
-    async executes(
+    async execute(
       _invokerCtx: TInvokerContext,
       args: { displayName: string; audioFileName: string },
     ) {
@@ -671,7 +715,7 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
     ],
-    async executes(
+    async execute(
       _invokerCtx: TInvokerContext,
       args: { displayName: string },
     ) {
@@ -691,7 +735,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-list",
     description: "List all configured DisplayName → audio file mappings.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       debugLog(`/hero-list called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
       const entries = Object.entries(musicMap);
@@ -708,7 +752,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-files",
     description: "List all available audio files (.mp3, .mpeg) in the music directory.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       debugLog(`/hero-files called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
       let files: string[];
       try {
@@ -740,7 +784,7 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
     ],
-    async executes(
+    async execute(
       invokerCtx: TInvokerContext,
       args: { audioFileName: string },
     ) {
@@ -772,7 +816,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-play-me",
     description: "Play your own intro music in the voice channel you are currently in.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
       const voiceGuard = requireActiveVoiceChannel(invokerCtx);
       const voiceChannelId = voiceGuard.ok ? voiceGuard.channelId : undefined;
@@ -803,7 +847,7 @@ const onLoad = async (ctx: PluginContext) => {
         return `Intro file not found: ${audioFileName}`;
       }
 
-      await playAudio(voiceChannelId, invokerUserId, invokerName, audioPath);
+      await playAudio(voiceChannelId, invokerUserId, invokerName, audioPath, invokerCtx);
       return `Playing your intro: ${audioFileName}`;
     },
   });
@@ -821,7 +865,7 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
     ],
-    async executes(
+    async execute(
       invokerCtx: TInvokerContext,
       args: { displayName: string },
     ) {
@@ -831,14 +875,26 @@ const onLoad = async (ctx: PluginContext) => {
       const { displayName } = args;
       debugLog(`/hero-play called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, channelActive=${voiceGuard.ok}, displayName="${displayName}"`);
 
+      if (!displayName) {
+        return "Please provide a display name. Usage: /hero-play <displayName>";
+      }
+
       if (!voiceGuard.ok) {
         return voiceGuard.message;
       }
 
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-      const audioFileName = musicMap[displayName];
+      let audioFileName = musicMap[displayName];
+      let playbackLabel = displayName;
+
       if (!audioFileName) {
-        return `No intro configured for ${displayName}.`;
+        const resolved = await resolveAudioFile(displayName);
+        if (resolved.ok) {
+          audioFileName = resolved.fileName;
+          playbackLabel = resolved.fileName;
+        } else {
+          return `No intro configured for ${displayName}. Use /hero-play-song <songName> to play by file name.`;
+        }
       }
 
       const audioPath = path.join(musicDir, audioFileName);
@@ -848,7 +904,7 @@ const onLoad = async (ctx: PluginContext) => {
         return `Intro file not found: ${audioFileName}`;
       }
 
-      await playAudio(voiceChannelId, invokerUserId ?? 0, displayName, audioPath);
+      await playAudio(voiceChannelId, invokerUserId ?? 0, playbackLabel, audioPath, invokerCtx);
       return `Playing intro for ${displayName}: ${audioFileName}`;
     },
   });
@@ -866,7 +922,7 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
     ],
-    async executes(
+    async execute(
       invokerCtx: TInvokerContext,
       args: { songName: string },
     ) {
@@ -889,7 +945,7 @@ const onLoad = async (ctx: PluginContext) => {
       }
 
       const audioPath = path.join(musicDir, resolved.fileName);
-      await playAudio(voiceChannelId, invokerUserId ?? 0, resolved.fileName, audioPath);
+      await playAudio(voiceChannelId, invokerUserId ?? 0, resolved.fileName, audioPath, invokerCtx);
       return `Playing: ${resolved.fileName}`;
     },
   });
@@ -899,7 +955,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-reset-me",
     description: "Reset your daily greeting counter so your intro plays again today.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
       debugLog(`/hero-reset-me called — userId=${invokerUserId}`);
 
@@ -928,7 +984,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-search-music",
     description: "Search chat attachments for audio files and add them to the music library.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       debugLog(`/hero-search-music called by userId=${(invokerCtx as Record<string, unknown>).userId}`);
 
       const dbPath = path.join(ctx.path, "..", "..", "db.sqlite");
@@ -1047,7 +1103,7 @@ const onLoad = async (ctx: PluginContext) => {
     name: "hero-diagnose",
     description: "Run a full audio pipeline diagnostic to find where audio breaks.",
     args: [],
-    async executes(invokerCtx: TInvokerContext) {
+    async execute(invokerCtx: TInvokerContext) {
       const voiceGuard = requireActiveVoiceChannel(invokerCtx);
       const voiceChannelId = voiceGuard.ok ? voiceGuard.channelId : undefined;
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
@@ -1467,7 +1523,7 @@ const onLoad = async (ctx: PluginContext) => {
         sensitive: false,
       },
     ],
-    async executes(...params: unknown[]) {
+    async execute(...params: unknown[]) {
       debugLog(`/hero-dump-context called`);
       const dump = params.map((p, i) => `param[${i}]: ${JSON.stringify(p, null, 2)}`).join("\n\n");
       ctx.log(`[DEBUG] Command params (${params.length} total):\n${dump}`);

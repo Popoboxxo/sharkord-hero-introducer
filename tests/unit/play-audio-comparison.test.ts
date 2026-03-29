@@ -21,7 +21,7 @@ interface CommandDefinition {
   name: string;
   description: string;
   args: unknown[];
-  executes: (...args: unknown[]) => Promise<string>;
+  execute: (...args: unknown[]) => Promise<string>;
 }
 
 // Bun.spawn mock
@@ -135,7 +135,7 @@ describe("Reference parity (sharkord-music-bot)", () => {
     }
 
     const heroPlayMe = commands.get("hero-play-me")!;
-    await heroPlayMe.executes({ userId: 1, currentVoiceChannelId: 10 });
+    await heroPlayMe.execute({ userId: 1, currentVoiceChannelId: 10 });
 
     return { ctx, captures };
   }

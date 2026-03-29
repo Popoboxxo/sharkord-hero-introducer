@@ -32,7 +32,7 @@ interface CommandDefinition {
   name: string;
   description: string;
   args: unknown[];
-  executes: (...args: unknown[]) => Promise<string>;
+  execute: (...args: unknown[]) => Promise<string>;
 }
 
 async function loadPlugin(tmpDir: string): Promise<{
@@ -171,7 +171,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       expect(heroPlayMe).toBeDefined();
 
       // Act: invoke without currentVoiceChannelId
-      const result = await heroPlayMe.executes({ userId: 10 });
+      const result = await heroPlayMe.execute({ userId: 10 });
 
       // Assert: specific error message as agreed in the requirement
       expect(typeof result).toBe("string");
@@ -199,7 +199,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       expect(heroPlay).toBeDefined();
 
       // Act: invoke without currentVoiceChannelId
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1 },
         { displayName: "Alice" },
       );
@@ -226,7 +226,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       expect(heroPlaySong).toBeDefined();
 
       // Act: invoke without currentVoiceChannelId
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1 },
         { songName: "eisenbart.mp3" },
       );
@@ -245,7 +245,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const heroPlaySong = commands.get("hero-play-song")!;
       expect(heroPlaySong).toBeDefined();
 
-      await heroPlaySong.executes(
+      await heroPlaySong.execute(
         { userId: 5 },
         { songName: "test.mp3" },
       );
@@ -277,7 +277,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const { ctx, commands } = await loadPlugin(tmpDir);
       const heroPlayMe = commands.get("hero-play-me")!;
 
-      const result = await heroPlayMe.executes({ userId: 10, currentVoiceChannelId: 99 });
+      const result = await heroPlayMe.execute({ userId: 10, currentVoiceChannelId: 99 });
 
       expect(result).toBe("Voice channel is not active.");
       const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
@@ -296,7 +296,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const { ctx, commands } = await loadPlugin(tmpDir);
       const heroPlay = commands.get("hero-play")!;
 
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1, currentVoiceChannelId: 99 },
         { displayName: "Alice" },
       );
@@ -313,7 +313,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const { ctx, commands } = await loadPlugin(tmpDir);
       const heroPlaySong = commands.get("hero-play-song")!;
 
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1, currentVoiceChannelId: 99 },
         { songName: "track.mp3" },
       );
@@ -327,7 +327,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const { ctx, commands } = await loadPlugin(tmpDir);
       const heroDiagnose = commands.get("hero-diagnose")!;
 
-      const result = await heroDiagnose.executes({ userId: 1, currentVoiceChannelId: 99 });
+      const result = await heroDiagnose.execute({ userId: 1, currentVoiceChannelId: 99 });
 
       expect(result).toBe("Voice channel is not active.");
       const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;

@@ -66,7 +66,7 @@ interface CommandDefinition {
   name: string;
   description: string;
   args: unknown[];
-  executes: (...args: unknown[]) => Promise<string>;
+  execute: (...args: unknown[]) => Promise<string>;
 }
 
 async function loadPlugin(tmpDir: string) {
@@ -156,7 +156,7 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
     const searchCmd = commands.get("hero-search-music");
     expect(searchCmd).toBeDefined();
 
-    const result = await searchCmd!.executes({}, {});
+    const result = await searchCmd!.execute({}, {});
 
     // The summary line uses the format "Found: N audio file(s) in chat attachments"
     expect(result).toContain("Found: 2 audio file(s) in chat attachments");
@@ -196,7 +196,7 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
     const searchCmd = commands.get("hero-search-music");
     expect(searchCmd).toBeDefined();
 
-    const result = await searchCmd!.executes({}, {});
+    const result = await searchCmd!.execute({}, {});
 
     expect(result).toContain("Found: 0 audio file(s) in chat attachments");
   });
@@ -225,7 +225,7 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
     const searchCmd = commands.get("hero-search-music");
     expect(searchCmd).toBeDefined();
 
-    const result = await searchCmd!.executes({}, {});
+    const result = await searchCmd!.execute({}, {});
 
     // The summary uses "Skipped (already exists): N"
     expect(result).toContain("Skipped (already exists): 1");
@@ -247,10 +247,10 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
     // Must not throw; must return a string with an error description
     let result: string;
     expect(async () => {
-      result = await searchCmd!.executes({}, {});
+      result = await searchCmd!.execute({}, {});
     }).not.toThrow();
 
-    result = await searchCmd!.executes({}, {});
+    result = await searchCmd!.execute({}, {});
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
     // Should mention the error or the path
@@ -295,7 +295,7 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
     const searchCmd = commands.get("hero-search-music");
     expect(searchCmd).toBeDefined();
 
-    const result = await searchCmd!.executes({}, {});
+    const result = await searchCmd!.execute({}, {});
 
     // Only the audio file counts
     expect(result).toContain("Found: 1 audio file(s) in chat attachments");
@@ -342,10 +342,10 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
 
     let result: string;
     expect(async () => {
-      result = await searchCmd!.executes(invokerCtx, {});
+      result = await searchCmd!.execute(invokerCtx, {});
     }).not.toThrow();
 
-    result = await searchCmd!.executes(invokerCtx, {});
+    result = await searchCmd!.execute(invokerCtx, {});
     expect(typeof result).toBe("string");
     // Must not contain a "voice channel" error
     expect(result.toLowerCase()).not.toContain("voice channel");

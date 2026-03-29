@@ -21,7 +21,7 @@ interface CommandDefinition {
   name: string;
   description: string;
   args: unknown[];
-  executes: (...args: unknown[]) => Promise<string>;
+  execute: (...args: unknown[]) => Promise<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroPlay = commands.get("hero-play")!;
 
-      const result = await heroPlay.executes(
+      const result = await heroPlay.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { displayName: "NoMappingUser" },
       );
@@ -127,7 +127,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroPlayMe = commands.get("hero-play-me")!;
 
-      const result = await heroPlayMe.executes(
+      const result = await heroPlayMe.execute(
         { userId: 888, currentVoiceChannelId: 5 },
       );
 
@@ -185,7 +185,7 @@ describe("Missing Coverage Tests", () => {
       const heroPlayMe = commands.get("hero-play-me")!;
 
       // No currentVoiceChannelId → user is not in a voice channel
-      const result = await heroPlayMe.executes({ userId: 333 });
+      const result = await heroPlayMe.execute({ userId: 333 });
 
       expect(typeof result).toBe("string");
       expect(result).toContain("You must be in a voice channel to use this command.");
@@ -202,7 +202,7 @@ describe("Missing Coverage Tests", () => {
       const heroStop = commands.get("hero-stop")!;
       expect(heroStop).toBeDefined();
 
-      const result = await heroStop.executes({});
+      const result = await heroStop.execute({});
       expect(result).toContain("No intro is currently playing");
     });
   });
@@ -218,7 +218,7 @@ describe("Missing Coverage Tests", () => {
       expect(heroDumpCtx).toBeDefined();
 
       const invokerCtx = { userId: 42, currentVoiceChannelId: 5, someField: "test" };
-      const result = await heroDumpCtx.executes(invokerCtx);
+      const result = await heroDumpCtx.execute(invokerCtx);
 
       expect(typeof result).toBe("string");
       // The result should contain JSON representation of the context
@@ -240,7 +240,7 @@ describe("Missing Coverage Tests", () => {
       const heroPlaySong = commands.get("hero-play-song")!;
       expect(heroPlaySong).toBeDefined();
 
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { songName: "eisenbart.mp3" },
       );
@@ -257,7 +257,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroPlaySong = commands.get("hero-play-song")!;
 
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { songName: "eisenbart" },
       );
@@ -274,7 +274,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroPlaySong = commands.get("hero-play-song")!;
 
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { songName: "song" },
       );
@@ -291,7 +291,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroPlaySong = commands.get("hero-play-song")!;
 
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1, currentVoiceChannelId: 5 },
         { songName: "nonexistent" },
       );
@@ -306,7 +306,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroPlaySong = commands.get("hero-play-song")!;
 
-      const result = await heroPlaySong.executes(
+      const result = await heroPlaySong.execute(
         { userId: 1 },
         { songName: "eisenbart.mp3" },
       );
@@ -386,7 +386,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
 
-      await heroSet.executes(
+      await heroSet.execute(
         {},
         { displayName: "PersistUser", audioFileName: "persist.mp3" },
       );
@@ -435,7 +435,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroList = commands.get("hero-list")!;
 
-      const result = await heroList.executes({});
+      const result = await heroList.execute({});
       expect(result).toContain("No intro mappings configured yet");
     });
 
@@ -510,7 +510,7 @@ describe("Missing Coverage Tests", () => {
       const { commands: cmds2 } = await loadPlugin(tmpDir);
       const heroSetMe = cmds2.get("hero-set-me")!;
 
-      const result = await heroSetMe.executes(
+      const result = await heroSetMe.execute(
         { userId: 99, currentVoiceChannelId: 1 },
         { audioFileName: "preload.mp3" },
       );
@@ -527,7 +527,7 @@ describe("Missing Coverage Tests", () => {
       await fs.mkdir(musicDir, { recursive: true });
       await fs.writeFile(path.join(musicDir, "nouser.mp3"), "fake-mp3");
 
-      const result = await heroSetMe.executes(
+      const result = await heroSetMe.execute(
         { userId: 9876, currentVoiceChannelId: 1 },
         { audioFileName: "nouser.mp3" },
       );
@@ -554,7 +554,7 @@ describe("Missing Coverage Tests", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
-      const result = await heroSet.executes(
+      const result = await heroSet.execute(
         {},
         { displayName: "FlexUser", audioFileName: "mytheme" },
       );
@@ -570,7 +570,7 @@ describe("Missing Coverage Tests", () => {
 
       const { commands } = await loadPlugin(tmpDir);
       const heroSet = commands.get("hero-set")!;
-      const result = await heroSet.executes(
+      const result = await heroSet.execute(
         {},
         { displayName: "AmbigUser", audioFileName: "ambiguous" },
       );
@@ -596,7 +596,7 @@ describe("Missing Coverage Tests", () => {
       const { commands } = await loadPlugin(tmpDir);
       const heroSetMe = commands.get("hero-set-me")!;
 
-      const result = await heroSetMe.executes(
+      const result = await heroSetMe.execute(
         { userId: 50, currentVoiceChannelId: 1 },
         { audioFileName: "flexme" },
       );
