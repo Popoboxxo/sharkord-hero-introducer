@@ -45,6 +45,14 @@ async function loadPlugin(tmpDir: string) {
     events.set(eventName, handler);
   }
 
+  // Default active channels for command success-path tests.
+  const voiceInitHandler = events.get("voice:runtime_initialized");
+  if (voiceInitHandler) {
+    await voiceInitHandler({ channelId: 1 });
+    await voiceInitHandler({ channelId: 5 });
+    await voiceInitHandler({ channelId: 10 });
+  }
+
   return { ctx, settings, commands, events };
 }
 

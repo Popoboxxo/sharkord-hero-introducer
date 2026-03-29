@@ -17,6 +17,7 @@ import os from "os";
 //   REQ-CMD-011-C /hero-play-me: error when invoker is not in a voice channel
 //   REQ-CMD-012-D /hero-play:    error when invoker is not in a voice channel
 //   REQ-CMD-013-E /hero-play-song: error when invoker is not in a voice channel
+//   REQ-CMD-016-E all audio commands: error when channel is not active
 //
 // NOTE: REQ-CORE-013 is a NEW requirement not yet present in REQUIREMENTS.md.
 // The hi-requirements agent must formally add it. The tests are written first
@@ -127,13 +128,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
 
-      // Assert: auto-intro skip is logged
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls
-        .map((c: unknown[]) => String(c[0]));
-      const skipMsg = logMessages.filter((m: string) =>
-        m.includes("Auto-intro skipped") || m.includes("BUG-002"),
-      );
-      expect(skipMsg.length).toBeGreaterThanOrEqual(1);
+      // user:joined remains cache-only
     });
 
     it("[REQ-CORE-013] should still cache userId → username on user:joined", async () => {
@@ -256,6 +251,85 @@ describe("Channel guard – voice channel membership & command guards", () => {
       );
 
       // getRouter is the first side-effect of playAudio — must NOT be called
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // REQ-CMD-016-E  all audio commands: channel present but not active
+  // -------------------------------------------------------------------------
+
+  describe("[REQ-CMD-016-E] active channel guard", () => {
+    it("[REQ-CMD-016-E] /hero-play-me should reject when currentVoiceChannelId is not active", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "hero.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "10": "GuardUser" }),
+      );
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ GuardUser: "hero.mp3" }),
+      );
+
+      const { ctx, commands } = await loadPlugin(tmpDir);
+      const heroPlayMe = commands.get("hero-play-me")!;
+
+      const result = await heroPlayMe.executes({ userId: 10, currentVoiceChannelId: 99 });
+
+      expect(result).toBe("Voice channel is not active.");
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+    });
+
+    it("[REQ-CMD-016-E] /hero-play should reject when currentVoiceChannelId is not active", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+
+      const { ctx, commands } = await loadPlugin(tmpDir);
+      const heroPlay = commands.get("hero-play")!;
+
+      const result = await heroPlay.executes(
+        { userId: 1, currentVoiceChannelId: 99 },
+        { displayName: "Alice" },
+      );
+
+      expect(result).toBe("Voice channel is not active.");
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+    });
+
+    it("[REQ-CMD-016-E] /hero-play-song should reject when currentVoiceChannelId is not active", async () => {
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "track.mp3"), "fake-mp3");
+
+      const { ctx, commands } = await loadPlugin(tmpDir);
+      const heroPlaySong = commands.get("hero-play-song")!;
+
+      const result = await heroPlaySong.executes(
+        { userId: 1, currentVoiceChannelId: 99 },
+        { songName: "track.mp3" },
+      );
+
+      expect(result).toBe("Voice channel is not active.");
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+    });
+
+    it("[REQ-CMD-016-E] /hero-diagnose should reject when currentVoiceChannelId is not active", async () => {
+      const { ctx, commands } = await loadPlugin(tmpDir);
+      const heroDiagnose = commands.get("hero-diagnose")!;
+
+      const result = await heroDiagnose.executes({ userId: 1, currentVoiceChannelId: 99 });
+
+      expect(result).toBe("Voice channel is not active.");
       const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
     });

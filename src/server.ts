@@ -19,6 +19,7 @@ type DailyGreets = Record<string, string>;
 
 /** Supported audio file extensions for intro music. */
 const SUPPORTED_EXTENSIONS = [".mp3", ".mpeg"];
+const INTRO_DELAY_MS = Number(process.env.HERO_INTRO_DELAY_MS ?? "5000");
 
 function isSupportedAudioFile(fileName: string): boolean {
   const lower = fileName.toLowerCase();
@@ -182,6 +183,21 @@ const onLoad = async (ctx: PluginContext) => {
 
   /** Set of currently active voice channel IDs. */
   const activeChannels = new Set<number>();
+
+  type VoiceChannelGuardResult =
+    | { ok: true; channelId: number }
+    | { ok: false; message: string };
+
+  function requireActiveVoiceChannel(invokerCtx: TInvokerContext): VoiceChannelGuardResult {
+    const channelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+    if (!channelId) {
+      return { ok: false, message: "You must be in a voice channel to use this command." };
+    }
+    if (!activeChannels.has(channelId)) {
+      return { ok: false, message: "Voice channel is not active." };
+    }
+    return { ok: true, channelId };
+  }
 
   // ---------------------------------------------------------------------------
   // Playback queue — ensures songs play sequentially per channel
@@ -455,31 +471,118 @@ const onLoad = async (ctx: PluginContext) => {
   });
 
   // ---------------------------------------------------------------------------
-  // User join handler – cache username (BUG-002 fix)
+  // Voice user events (Sharkord >= 0.0.16)
   // ---------------------------------------------------------------------------
-  //
-  // IMPORTANT: The `user:joined` event fires when a user logs into the SERVER,
-  // NOT when they join a voice channel. The Sharkord Plugin SDK does not
-  // currently expose a `voice:user_joined` event (see FEATURE_REQUEST_VOICE_EVENTS.md).
-  //
-  // Previous behaviour (BUG-002): The handler blindly picked the first active
-  // voice channel and played the intro there — even if the user was not in any
-  // voice channel at all. This caused the bot to join empty channels.
-  //
-  // Current behaviour: We only use this event to cache userId → username.
-  // Automatic intros are DISABLED until the SDK exposes voice join events.
-  // Users can trigger their intro manually via /hero-play-me.
-  //
-  // WORKAROUND: /hero-play-me plays the user's intro in their current voice
-  // channel (using ctx.currentVoiceChannelId from the invoker context, which
-  // is reliable). See also /hero-play and /hero-play-song.
+
+  ctx.events.on("voice:user_joined", async (payload: Record<string, unknown>) => {
+    const channelId = payload.channelId as number;
+    const userId = payload.userId as number;
+    const payloadUsername = payload.username as string | undefined;
+
+    const cachedUsername = userNameCache.get(userId);
+    const username = payloadUsername ?? cachedUsername;
+
+    debugLog(`>>> voice:user_joined event — channelId=${channelId}, userId=${userId}, username="${username ?? "unknown"}"`);
+
+    if (!activeChannels.has(channelId)) {
+      debugLog(`Auto-intro skipped for userId=${userId} — voice channel ${channelId} is not active`);
+      return;
+    }
+
+    if (payloadUsername) {
+      userNameCache.set(userId, payloadUsername);
+      await writeJsonFile(userCacheFile, Object.fromEntries(userNameCache));
+      debugLog(`User cache updated via voice:user_joined: userId=${userId} → "${payloadUsername}"`);
+    }
+
+    if (!username) {
+      debugLog(`Auto-intro skipped for userId=${userId} — no username in payload or cache`);
+      return;
+    }
+
+    const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
+    const audioFileName = musicMap[username];
+    if (!audioFileName) {
+      debugLog(`Auto-intro skipped for "${username}" — no mapping found`);
+      return;
+    }
+
+    const oncePerDay = settings.get("oncePerDay");
+    if (oncePerDay) {
+      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
+      const lastGreet = dailyGreets[String(userId)];
+      if (lastGreet === todayISO()) {
+        debugLog(`Skipping intro for "${username}" — already greeted today`);
+        return;
+      }
+    }
+
+    const mp3Path = path.join(musicDir, audioFileName);
+    const exists = await fs.access(mp3Path).then(() => true).catch(() => false);
+    if (!exists) {
+      ctx.error(`Mapped file for "${username}" not found: ${mp3Path}`);
+      return;
+    }
+
+    if (INTRO_DELAY_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, INTRO_DELAY_MS));
+    }
+
+    if (!activeChannels.has(channelId)) {
+      debugLog(`Auto-intro skipped for "${username}" — channel ${channelId} became inactive during delay`);
+      return;
+    }
+
+    if (oncePerDay) {
+      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
+      dailyGreets[String(userId)] = todayISO();
+      await writeJsonFile(dailyGreetsFile, dailyGreets);
+    }
+
+    enqueuePlayback({
+      channelId,
+      userId,
+      label: username,
+      mp3Path,
+    });
+  });
+
+  ctx.events.on("voice:user_left", (payload: Record<string, unknown>) => {
+    const channelId = payload.channelId as number;
+    const userId = payload.userId as number;
+    const sessionKey = `${channelId}-${userId}`;
+
+    // Remove pending queue entries for that user in this channel.
+    const queue = playbackQueues.get(channelId);
+    if (queue) {
+      const filtered = queue.filter((entry) => entry.userId !== userId);
+      if (filtered.length > 0) {
+        playbackQueues.set(channelId, filtered);
+      } else {
+        playbackQueues.delete(channelId);
+      }
+    }
+
+    // Stop an active intro for that user/channel.
+    const active = activeSessions.get(sessionKey);
+    if (active) {
+      active.ffmpeg.kill();
+      active.cleanup();
+      activeSessions.delete(sessionKey);
+      debugLog(`Stopped active intro on voice:user_left — channelId=${channelId}, userId=${userId}`);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // User join handler – cache username only
+  // ---------------------------------------------------------------------------
   // ---------------------------------------------------------------------------
 
   ctx.events.on("user:joined", async (payload: Record<string, unknown>) => {
     const userId = payload.userId as number;
     const username = payload.username as string;
 
-    debugLog(`>>> user:joined event — userId=${userId}, username="${username}" (server login, NOT voice join)`);
+    debugLog(`>>> user:joined event — userId=${userId}, username="${username}" (server login)`);
 
     // Cache the userId → username mapping for /hero-set-me (persist to disk)
     userNameCache.set(userId, username);
@@ -488,10 +591,7 @@ const onLoad = async (ctx: PluginContext) => {
     debugLog(`User cache updated: userId=${userId} → "${username}" (total cached: ${userNameCache.size})`);
 
     // NOTE: No automatic intro playback here.
-    // The SDK's user:joined event does not indicate a voice channel join.
-    // Automatic intros require a voice:user_joined event (feature request pending).
-    // Until then, users can use /hero-play-me to trigger their intro manually.
-    debugLog(`Auto-intro skipped for "${username}" — no voice:user_joined event available (BUG-002 fix)`);
+    // Auto-play is handled by voice:user_joined (Sharkord >= 0.0.16).
   });
 
   // ---------------------------------------------------------------------------
@@ -674,14 +774,15 @@ const onLoad = async (ctx: PluginContext) => {
     args: [],
     async executes(invokerCtx: TInvokerContext) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
-      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
-      debugLog(`/hero-play-me called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}`);
+      const voiceGuard = requireActiveVoiceChannel(invokerCtx);
+      const voiceChannelId = voiceGuard.ok ? voiceGuard.channelId : undefined;
+      debugLog(`/hero-play-me called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, channelActive=${voiceGuard.ok}`);
 
       if (invokerUserId === undefined) {
         return "Could not determine your user ID.";
       }
-      if (!voiceChannelId) {
-        return "You must be in a voice channel to use this command.";
+      if (!voiceGuard.ok) {
+        return voiceGuard.message;
       }
 
       const invokerName = userNameCache.get(invokerUserId);
@@ -725,12 +826,13 @@ const onLoad = async (ctx: PluginContext) => {
       args: { displayName: string },
     ) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
-      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      const voiceGuard = requireActiveVoiceChannel(invokerCtx);
+      const voiceChannelId = voiceGuard.ok ? voiceGuard.channelId : undefined;
       const { displayName } = args;
-      debugLog(`/hero-play called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, displayName="${displayName}"`);
+      debugLog(`/hero-play called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, channelActive=${voiceGuard.ok}, displayName="${displayName}"`);
 
-      if (!voiceChannelId) {
-        return "You must be in a voice channel to use this command.";
+      if (!voiceGuard.ok) {
+        return voiceGuard.message;
       }
 
       const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
@@ -769,15 +871,16 @@ const onLoad = async (ctx: PluginContext) => {
       args: { songName: string },
     ) {
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
-      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      const voiceGuard = requireActiveVoiceChannel(invokerCtx);
+      const voiceChannelId = voiceGuard.ok ? voiceGuard.channelId : undefined;
       const { songName } = args;
-      debugLog(`/hero-play-song called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, songName="${songName}"`);
+      debugLog(`/hero-play-song called — userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, channelActive=${voiceGuard.ok}, songName="${songName}"`);
 
       if (!songName) {
         return "Please provide a song name. Usage: /hero-play-song <songName>";
       }
-      if (!voiceChannelId) {
-        return "You must be in a voice channel to use this command.";
+      if (!voiceGuard.ok) {
+        return voiceGuard.message;
       }
 
       const resolved = await resolveAudioFile(songName);
@@ -945,9 +1048,15 @@ const onLoad = async (ctx: PluginContext) => {
     description: "Run a full audio pipeline diagnostic to find where audio breaks.",
     args: [],
     async executes(invokerCtx: TInvokerContext) {
-      const voiceChannelId = (invokerCtx as Record<string, unknown>).currentVoiceChannelId as number | undefined;
+      const voiceGuard = requireActiveVoiceChannel(invokerCtx);
+      const voiceChannelId = voiceGuard.ok ? voiceGuard.channelId : undefined;
       const invokerUserId = (invokerCtx as Record<string, unknown>).userId as number | undefined;
-      debugLog(`/hero-diagnose called by userId=${invokerUserId}, voiceChannelId=${voiceChannelId}`);
+      debugLog(`/hero-diagnose called by userId=${invokerUserId}, voiceChannelId=${voiceChannelId}, channelActive=${voiceGuard.ok}`);
+
+      if (!voiceGuard.ok) {
+        return voiceGuard.message;
+      }
+
       const lines: string[] = ["=== HERO-INTRODUCER DIAGNOSTIC REPORT ===", ""];
 
       function pass(stage: string, detail: string) { lines.push(`[PASS] ${stage}: ${detail}`); }
@@ -955,11 +1064,6 @@ const onLoad = async (ctx: PluginContext) => {
       function info(stage: string, detail: string) { lines.push(`[INFO] ${stage}: ${detail}`); }
 
       // --- Stage 0: Pre-flight ---
-      if (!voiceChannelId) {
-        fail("Stage 0", "You are not in a voice channel.");
-        return lines.join("\n");
-      }
-
       let ffmpegOk = false;
       try {
         const probe = Bun.spawn({ cmd: [ffmpegCmd, "-version"], stdout: "pipe", stderr: "ignore", stdin: "ignore" });

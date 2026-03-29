@@ -1,6 +1,10 @@
 # Feature Request: Voice Channel Join/Leave Events for Plugin SDK
 
-## Problem
+## Status (29.03.2026)
+
+Erfuellt in Sharkord `0.0.16`: Das Plugin nutzt jetzt `voice:user_joined` und `voice:user_left` fuer den Voice-Event-Flow.
+
+## Historisches Problem
 
 The Plugin SDK does not expose events when users join or leave a voice channel. The only available user event is `user:joined`, which fires when a user **logs into the server** — not when they enter a voice channel. There is also no API to query which users are currently in a voice channel.
 

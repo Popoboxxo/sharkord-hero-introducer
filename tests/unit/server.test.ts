@@ -65,7 +65,7 @@ interface CommandDefinition {
 
 async function loadPlugin(tmpDir: string) {
   const { ctx, settings } = createMockPluginContext({ path: tmpDir });
-  const { onLoad } = await import("../../src/server");
+  const { onLoad } = await import(`../../src/server?server=${Date.now()}-${Math.random()}`);
   await (onLoad as Function)(ctx);
 
   const commands = new Map<string, CommandDefinition>();
@@ -78,6 +78,14 @@ async function loadPlugin(tmpDir: string) {
   for (const call of (ctx.events.on as ReturnType<typeof mock>).mock.calls) {
     const [eventName, handler] = call as [string, (...args: unknown[]) => Promise<void>];
     events.set(eventName, handler);
+  }
+
+  // Default active channels for command success-path tests.
+  const voiceInitHandler = events.get("voice:runtime_initialized");
+  if (voiceInitHandler) {
+    await voiceInitHandler({ channelId: 1 });
+    await voiceInitHandler({ channelId: 5 });
+    await voiceInitHandler({ channelId: 10 });
   }
 
   return { ctx, settings, commands, events };
@@ -273,14 +281,10 @@ describe("Plugin onLoad – commands & data", () => {
     });
   });
 
-  // -- REQ-CORE-001 / BUG-002: user:joined – caches username only --------
-  //
-  // After BUG-002 fix: user:joined (= server login) no longer triggers
-  // automatic intro playback. It only caches the userId → username mapping.
-  // Automatic intros are blocked until the SDK exposes voice:user_joined.
+  // -- REQ-CORE-013: user:joined – caches username only -------------------
 
   describe("user:joined handler", () => {
-    it("[REQ-CORE-001] should cache userId → username on user:joined (no auto-intro)", async () => {
+    it("[REQ-CORE-013] should cache userId → username on user:joined (no auto-intro)", async () => {
       await fs.mkdir(dataDir, { recursive: true });
       await fs.mkdir(musicDir, { recursive: true });
       await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
@@ -311,14 +315,129 @@ describe("Plugin onLoad – commands & data", () => {
       const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
 
-      // Verify: auto-intro skip is logged
-      const logMessages = (ctx.log as ReturnType<typeof mock>).mock.calls.map(
-        (c: unknown[]) => String(c[0]),
+      // user:joined remains cache-only
+    });
+  });
+
+  // -- REQ-CORE-001: voice:user_joined triggers auto-intro -----------------
+
+  describe("voice:user_joined handler", () => {
+    it("[REQ-CORE-001] should start intro playback when mapping exists", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
       );
-      const skipMsg = logMessages.filter((m: string) =>
-        m.includes("Auto-intro skipped") || m.includes("BUG-002"),
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("voice:user_joined")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
+      expect(getRouterCalls[0][0]).toBe(5);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CORE-002] should not start playback when mapping does not exist", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("voice:user_joined")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 901, username: "NoMap" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CORE-014] should not start playback when channel is not active", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
       );
-      expect(skipMsg.length).toBeGreaterThanOrEqual(1);
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("voice:user_joined")!;
+
+      await voiceJoinedHandler({ channelId: 999, userId: 902, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+  });
+
+  // -- REQ-CORE-015: voice:user_left cleanup -------------------------------
+
+  describe("voice:user_left handler", () => {
+    it("[REQ-CORE-015] should stop active intro for user in channel", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("voice:user_joined")!;
+      const voiceLeftHandler = events.get("voice:user_left")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 903, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await voiceLeftHandler({ channelId: 5, userId: 903 });
+
+      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
     });
   });
 

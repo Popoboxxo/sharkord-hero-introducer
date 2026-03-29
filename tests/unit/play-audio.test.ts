@@ -78,6 +78,17 @@ async function loadPlugin(tmpDir: string) {
   const mod = await import(`../../src/server?t=${Date.now()}-${Math.random()}`);
   await (mod.onLoad as Function)(ctx);
 
+  // Default active channels for command success-path tests.
+  for (const call of (ctx.events.on as ReturnType<typeof mock>).mock.calls) {
+    const [eventName, handler] = call as [string, (payload: { channelId: number }) => Promise<void>];
+    if (eventName === "voice:runtime_initialized") {
+      await handler({ channelId: 1 });
+      await handler({ channelId: 5 });
+      await handler({ channelId: 10 });
+      break;
+    }
+  }
+
   const commands = new Map<string, CommandDefinition>();
   for (const call of (ctx.commands.register as ReturnType<typeof mock>).mock.calls) {
     const cmdDef = call[0] as CommandDefinition;

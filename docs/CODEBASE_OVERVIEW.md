@@ -1,7 +1,7 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 22. Maerz 2026
-> **Version:** 0.1.0
+> **Stand:** 29. Maerz 2026
+> **Version:** 0.2.0
 
 ---
 
@@ -61,7 +61,6 @@
 
 | Key | Typ | Default | Beschreibung | REQ |
 |-----|-----|---------|-------------|-----|
-| `enabled` | `boolean` | `true` | Plugin ein/aus | REQ-CFG-001 |
 | `oncePerDay` | `boolean` | `true` | Pro User max. einmal pro Kalendertag begruessen | REQ-CFG-002 |
 | `debug` | `boolean` | `false` | Detailliertes Debug-Logging aktivieren | REQ-CFG-004 |
 | `volume` | `number` | `25` | Playback-Lautstaerke (0-100%), angewendet via ffmpeg `-af volume=0.XX` | REQ-CFG-005 |
@@ -104,14 +103,14 @@
 |-------|--------------|-----|
 | `voice:runtime_initialized` | `activeChannels.add(channelId)`, `debugLog()` | REQ-CORE-005, REQ-DBG-004 |
 | `voice:runtime_closed` | `activeChannels.delete(channelId)`, alle `activeSessions` fuer diesen Channel aufraumen (kill + cleanup + delete), `playbackQueues.delete(channelId)`, `queueProcessing.delete(channelId)`, `debugLog()` | REQ-CORE-005, REQ-CORE-007, REQ-DBG-004 |
-| `user:joined` | Intro-Logik: `userNameCache` aktualisieren + persistieren -> enabled-Check -> MusicMap-Lookup -> oncePerDay-Check -> Datei-Existenz -> `INTRO_DELAY_MS` warten -> erster aktiver Channel aus `activeChannels` (kein Mitglieder-Check — BUG-002) -> DailyGreets speichern -> `enqueuePlayback()`. `debugLog()` an vielen Stellen. | REQ-CORE-001 bis REQ-CORE-003, REQ-CFG-001, REQ-CFG-002, REQ-DBG-002, REQ-DBG-006 |
+| `voice:user_joined` | Auto-Intro-Logik: Channel aus Event-Payload (`channelId`), Mapping-Lookup, oncePerDay-Check, Datei-Existenz, Delay, danach `enqueuePlayback()`. | REQ-CORE-001, REQ-CORE-002, REQ-CORE-003, REQ-CORE-010 |
+| `voice:user_left` | Entfernt Queue-Einträge des Users im Channel und beendet aktive Session (`channelId-userId`). | REQ-CORE-015 |
+| `user:joined` | Cache-Only: `userNameCache` aktualisieren und persistieren, keine Wiedergabe. | REQ-CORE-013, REQ-DATA-007, REQ-DBG-006 |
 
 #### Commands
 
 | Command | Args | Rueckgabe | REQ |
 |---------|------|---------|-----|
-| `/hero-enable` | -- | Setzt `enabled=true`, Bestaetigung | REQ-CMD-001 |
-| `/hero-disable` | -- | Setzt `enabled=false`, Bestaetigung | REQ-CMD-002 |
 | `/hero-stop` | -- | Killt alle `activeSessions` (ffmpeg.kill + cleanup), leert Map | REQ-CMD-003 |
 | `/hero-set` | `displayName: string`, `audioFileName: string` | Nutzt `resolveAudioFile()` fuer flexible Dateinamen-Aufloesung (mit/ohne Endung, case-insensitive, Duplikat-Erkennung), speichert Mapping | REQ-CMD-004 |
 | `/hero-remove` | `displayName: string` | Loescht Mapping aus MusicMap | REQ-CMD-005 |
@@ -321,17 +320,12 @@ Liest `issues`-Events, normalisiert neu erstellte Issues, sammelt Repo-Kontext u
 
 ## Flows
 
-### Flow 1: User-Join -> Intro-Playback
+### Flow 1: Voice-Join -> Intro-Playback
 
 ```
-user:joined(userId, username)
+voice:user_joined(channelId, userId, username)
   |
-  +- debugLog: userId, username
-  |
-  +- userNameCache.set(userId, username) -> writeJsonFile(user-cache.json)
-  |   +- debugLog: Cache-Update mit Gesamtzahl
-  |
-  +- enabled == false? -> debugLog, return
+  +- debugLog: userId, username, channelId
   |
   +- MusicMap laden -> debugLog (Anzahl Eintraege, Keys)
   |
@@ -341,15 +335,23 @@ user:joined(userId, username)
   |
   +- Audio-Datei existiert nicht? -> ctx.error(), return
   |
-  +- INTRO_DELAY_MS (5s) warten
+  +- INTRO_DELAY_MS (Default 5s) warten
   |
-  +- Erster aktiver Channel aus activeChannels (kein Mitglieder-Check — BUG-002)
-  |   +- Kein Channel? -> ctx.error(), return
+  +- activeChannels.has(channelId)? sonst return
   |
   +- oncePerDay? -> DailyGreets speichern (VOR dem Einqueuen)
   |
   +- enqueuePlayback({ channelId, userId, label: username, mp3Path })
        -> processQueue(channelId) -> playAudioAndWait(...)
+```
+
+### Flow 1b: Server-Join -> Cache-Update only
+
+```
+user:joined(userId, username)
+  |
+  +- userNameCache.set(userId, username) -> writeJsonFile(user-cache.json)
+  +- kein Auto-Playback
 ```
 
 ### Flow 2: playAudio -> On-demand Streaming
@@ -563,7 +565,7 @@ bun build.ts
 | Problem | Beschreibung | Status |
 |---------|-------------|--------|
 | Audio nicht hoerbar (BUG-001) | Root Cause war leere `announcedAddress` in `config.ini` — nicht der Plugin-Code. Fix: `announcedAddress=127.0.0.1` (lokal) bzw. Public-IP eintragen. Code-Aenderungen fuer music-bot-Paritaet wurden ebenfalls angewendet (payloadType=111 hardcoded, `parameters: {}` leer, manueller Consumer-Hack entfernt). | Geloest und verifiziert (Docker-Dev-Stack, 2026-03-20) |
-| Intro spielt obwohl User alleine im Channel (BUG-002) | Im `user:joined`-Handler fehlt eine Prüfung, ob der Voice-Channel wirklich weitere echte Nutzer enthält. Es wird einfach der erste Channel aus `activeChannels` genommen, ohne Mitglieder-Check. Dadurch spielt der Bot sich selbst ein Intro vor. Betroffene Stelle: L519-L524 (`user:joined`-Handler nach INTRO_DELAY_MS). | Offen — Fix ausstehend |
+| Intro spielt obwohl User alleine im Channel (BUG-002) | Historischer Fehler durch Auto-Trigger über `user:joined` und Channel-Fallback. | Behoben in 0.0.16-Migration (`voice:user_joined`, kein Fallback) |
 
 ---
 

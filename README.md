@@ -1,6 +1,6 @@
 # sharkord-hero-introducer
 
-A [Sharkord](https://sharkord.com) plugin that automatically plays a personalised **MP3/MPEG intro** for each user the moment they join the server and a voice channel is active.
+A [Sharkord](https://sharkord.com) plugin that automatically plays a personalised **MP3/MPEG intro** when a user joins a voice channel (`voice:user_joined`).
 
 ---
 
@@ -8,7 +8,7 @@ A [Sharkord](https://sharkord.com) plugin that automatically plays a personalise
 
 | Feature | Details |
 |---------|---------|
-| **Auto-play on join** | Detects user joins and plays the user's personal intro in the first active voice channel. |
+| **Auto-play on voice join** | Uses `voice:user_joined` and plays the user's intro in the exact channel from the event payload. |
 | **MP3 and MPEG support** | Supports both `.mp3` and `.mpeg` audio files. |
 | **Flexible file matching** | File names can be specified with or without extension, case-insensitive. Duplicate names are detected. |
 | **On-demand playback** | The bot does not stay in the channel. Transport, producer, and stream are created per playback and cleaned up automatically. |
@@ -24,7 +24,7 @@ A [Sharkord](https://sharkord.com) plugin that automatically plays a personalise
 
 ## Requirements
 
-- [Sharkord](https://github.com/Sharkord/sharkord) server >= 0.0.15
+- [Sharkord](https://github.com/Sharkord/sharkord) server >= 0.0.16
 - [`ffmpeg`](https://ffmpeg.org/) — place as `bin/ffmpeg` (or `bin/ffmpeg.exe` on Windows) inside the plugin directory, or make it available in `PATH`
 - [Bun](https://bun.sh/) runtime
 
@@ -141,7 +141,7 @@ Mappings are managed with the `/hero-set` command and stored persistently in:
 }
 ```
 
-The **key** is the user's **display name** (as shown in Sharkord and received via `user:joined` events).
+The **key** is the user's **display name** (as shown in Sharkord and received via `voice:user_joined` events).
 The **value** is the **audio file name** (relative to the `<plugin-dir>/music/` directory).
 
 ### Music directory
@@ -162,11 +162,11 @@ The `/hero-files` command lists all available files in this directory.
 
 ## How it works
 
-1. When a user joins the Sharkord server, the plugin checks whether it is enabled.
-2. It looks up the user's **display name** (from the `user:joined` event) in `music-map.json`.
+1. When a user joins a voice channel, Sharkord emits `voice:user_joined` with `channelId`, `userId`, and `username`.
+2. The plugin looks up the user's **display name** in `music-map.json`.
 3. If an audio file mapping is found, it checks whether the user has already been greeted today (when `oncePerDay` is enabled).
 4. The audio file is verified to exist in the `<plugin-dir>/music/` directory.
-5. After a 5-second delay, the plugin obtains the first active voice channel router via the Sharkord mediasoup integration.
+5. After a configurable delay (`INTRO_DELAY_MS`, default 5 seconds), playback starts in the exact `channelId` from the event.
 6. A `PlainTransport` is created and `ffmpeg` is spawned (via `Bun.spawn`) to decode the audio and send it as RTP/Opus to mediasoup.
 7. The stream is exposed in the voice channel via `createStream` so all participants hear the intro.
 8. When the ffmpeg process exits (end of file or `/hero-stop`) the transport, producer, and stream are cleaned up automatically. The bot does not persist in the channel.

@@ -1,7 +1,7 @@
 # Architektur — sharkord-hero-introducer
 
-> **Stand:** 22. Maerz 2026
-> **Version:** 0.1.0
+> **Stand:** 29. Maerz 2026
+> **Version:** 0.2.0
 
 ---
 
@@ -82,7 +82,7 @@ server.ts
   |
   +-- onLoad(ctx) -- Hauptfunktion, enthaelt alles in einer Closure:
   |     |
-  |     +-- Settings-Registrierung (enabled, oncePerDay, debug, volume)
+  |     +-- Settings-Registrierung (oncePerDay, debug, volume)
   |     +-- debugLog() -- Closure-interne Hilfsfunktion
   |     +-- resolveAudioFile() -- Closure-interne Hilfsfunktion
   |     +-- ResolveResult, PlaybackSession -- Closure-interne Types
@@ -94,10 +94,12 @@ server.ts
   |     +-- Event-Handler
   |     |     +- voice:runtime_initialized
   |     |     +- voice:runtime_closed
+  |     |     +- voice:user_joined
+  |     |     +- voice:user_left
   |     |     +- user:joined
   |     |
-  |     +-- Commands (13 Stueck)
-  |     |     +- hero-enable, hero-disable, hero-stop
+  |     +-- Commands (11 Stueck)
+  |     |     +- hero-stop
   |     |     +- hero-set, hero-remove, hero-list, hero-files
   |     |     +- hero-set-me, hero-play-me, hero-play, hero-play-song
   |     |     +- hero-diagnose, hero-dump-context
@@ -129,8 +131,8 @@ Audio-Datei (.mp3/.mpeg)
   |
   v
 ffmpeg (Bun.spawn)
-  - Dekodiert Audio (-fflags +genpts)
-  - Enkodiert als Opus (-vbr off, -frame_duration 20, dynamischer payload_type)
+  - Dekodiert Audio
+  - Enkodiert als Opus (payload_type 111)
   - Sendet als RTP-Pakete
   |
   v
@@ -138,7 +140,7 @@ mediasoup PlainTransport (UDP, comedia)
   - Empfaengt RTP auf lokalen Port
   |
   v
-mediasoup Producer (audio/opus, dynamischer PT vom Router, 48kHz, stereo, minptime=10, useinbandfec=1)
+mediasoup Producer (audio/opus, payloadType 111, 48kHz, stereo)
   |
   v
 Sharkord SDK createStream()
