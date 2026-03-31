@@ -25,7 +25,7 @@ AGENT_HINTS["hi-developer"]="REQ-xxx implementieren, Bugfix beschreiben, oder Re
 AGENT_HINTS["hi-documenter"]="Doku aktualisieren, Erkenntnisse speichern, Codebase Overview updaten, oder README pflegen"
 AGENT_HINTS["hi-requirements"]="Neue Anforderung beschreiben, bestehende REQ-ID prüfen, oder Traceability-Analyse anfordern"
 AGENT_HINTS["hi-tester"]="Tests für REQ-xxx schreiben, Testabdeckung prüfen, Test-Suite ausführen, oder Docker-Testsystem starten"
-AGENT_HINTS["hi-validator"]="Validierung einer Implementierung, DoD-Check, Traceability-Audit, oder Code-Review gegen REQ-IDs"
+AGENT_HINTS["hi-validator"]="Validierung einer Implementierung, DoD-Check, Traceability-Audit, Code-Review gegen REQ-IDs, manueller E2E-Test aller Commands"
 
 echo "🔄 Synchronisiere Claude Agents → GitHub Copilot Agents..."
 
