@@ -1,0 +1,7 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "bun": true,
+        "ForEach-Object": true,
+        "Set-Content": true
+    }
+}

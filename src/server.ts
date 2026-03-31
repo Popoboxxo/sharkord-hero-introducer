@@ -288,8 +288,9 @@ const onLoad = async (ctx: PluginContext) => {
   }
 
   function resolveVoiceActions(runtimeCtx?: TInvokerContext): VoiceActionsLike {
-    const fromRuntime = (runtimeCtx as { actions?: { voice?: unknown } } | undefined)?.actions?.voice;
-    const fromPluginCtx = (ctx as { actions?: { voice?: unknown } }).actions?.voice;
+    // SDK 0.0.16: voice actions live at ctx.voice (not ctx.actions.voice)
+    const fromRuntime = (runtimeCtx as { voice?: unknown } | undefined)?.voice;
+    const fromPluginCtx = (ctx as unknown as { voice?: unknown }).voice;
     const candidate = (fromRuntime ?? fromPluginCtx) as Partial<VoiceActionsLike> | undefined;
 
     if (
@@ -1177,8 +1178,8 @@ const onLoad = async (ctx: PluginContext) => {
       let transport: DiagTransport;
       let rtpPort: number;
       try {
-        router = ctx.actions.voice.getRouter(voiceChannelId) as unknown as DiagRouter;
-        listenInfo = await ctx.actions.voice.getListenInfo() as unknown as DiagListenInfo;
+        router = (ctx as unknown as { voice: VoiceActionsLike }).voice.getRouter(voiceChannelId) as unknown as DiagRouter;
+        listenInfo = await (ctx as unknown as { voice: VoiceActionsLike }).voice.getListenInfo() as unknown as DiagListenInfo;
         transport = await router.createPlainTransport({
           listenIp: { ip: listenInfo.ip, announcedIp: listenInfo.announcedAddress },
           rtcpMux: true,
@@ -1291,7 +1292,7 @@ const onLoad = async (ctx: PluginContext) => {
         });
       }
 
-      const stream = ctx.actions.voice.createStream({
+      const stream = (ctx as unknown as { voice: VoiceActionsLike }).voice.createStream({
         channelId: voiceChannelId,
         title: `Diagnostic Test`,
         key: `hero-diag-${voiceChannelId}-${invokerUserId ?? 0}`,

@@ -200,7 +200,7 @@ describe("Reference parity (sharkord-music-bot)", () => {
   // -----------------------------------------------------------------------
   it("createStream uses 'producers: { audio: producer }' matching reference", async () => {
     const { ctx } = await triggerPlayback();
-    const csm = ctx.actions.voice.createStream as ReturnType<typeof mock>;
+    const csm = ctx.voice.createStream as ReturnType<typeof mock>;
     expect(csm.mock.calls.length).toBeGreaterThanOrEqual(1);
 
     const streamArgs = csm.mock.calls[0][0] as Record<string, unknown>;

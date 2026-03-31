@@ -294,12 +294,12 @@ describe("playAudio pipeline", () => {
   it("[REQ-CORE-004] should register stream with correct channelId, key, title, and audio producer", async () => {
     const { captures } = await triggerPlayback();
     const createStreamCalls = captures.stream; // stream is the mock returned
-    const createStreamMock = (captures as any).router; // wrong, need ctx.actions.voice.createStream
+    const createStreamMock = (captures as any).router; // wrong, need ctx.voice.createStream
 
     // Get createStream mock calls directly
     // triggerPlayback returns ctx, which has the mock
     const { ctx } = await triggerPlayback();
-    const csm = ctx.actions.voice.createStream as ReturnType<typeof mock>;
+    const csm = ctx.voice.createStream as ReturnType<typeof mock>;
 
     // At least 1 createStream call from the triggered playback
     expect(csm.mock.calls.length).toBeGreaterThanOrEqual(1);

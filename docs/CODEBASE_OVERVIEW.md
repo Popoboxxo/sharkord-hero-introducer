@@ -147,8 +147,8 @@ async function playAudio(
 
 1. `procKey = "${channelId}-${userId}"` als Session-Key
 2. Existierende Session fuer diesen Key? -> `ffmpeg.kill()` + `cleanup()` + `activeSessions.delete()` (REQ-CORE-008)
-3. `ctx.actions.voice.getRouter(channelId)` -> mediasoup Router holen
-4. `ctx.actions.voice.getListenInfo()` -> IP/announcedAddress
+3. `ctx.voice.getRouter(channelId)` -> mediasoup Router holen
+4. `ctx.voice.getListenInfo()` -> IP/announcedAddress
 5. `router.createPlainTransport()` mit `rtcpMux: true`, `comedia: true`, `enableSrtp: false`
 6. SSRC = `Math.floor(Math.random() * 1e9)` (zufaellig pro Playback)
 7. `transport.produce()` -> Opus-Producer (48kHz, stereo, hardcoded `payloadType: 111`, `parameters: {}` leer, `rtcpFeedback: []`)
@@ -158,7 +158,7 @@ async function playAudio(
     - `-b:a 192k`, `-application audio`
     - ffmpeg Loglevel: `verbose` wenn debug=true, sonst `warning`
     - stdout: `"ignore"`, stderr: `"pipe"`, stdin: `"ignore"`
-10. `ctx.actions.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`, `avatarUrl`)
+10. `ctx.voice.createStream()` -> Stream im Channel exponieren (Titel: `Hero Intro: {label}`, Key: `hero-intro-{channelId}-{userId}`, `avatarUrl`)
 11. Producer-Score-Monitoring via `producer.on("score", ...)`
 12. Health-Check nach 5s: `producer.getStats()` -> packetCount > 0? (`[WARN]` wenn 0 Pakete)
 13. `cleanup`-Funktion definiert: `stream.remove()`, `producer.close()`, `transport.close()`
@@ -199,7 +199,7 @@ Vollstaendige Audio-Pipeline-Diagnose mit strukturiertem PASS/FAIL-Report. Erste
 | 1 | Transport | `getRouter()`, `getListenInfo()`, `createPlainTransport()` erstellen. Bei Fehler: sofortiger Abbruch mit FAIL. |
 | 2 | Producer | `transport.produce()` mit Opus-Codec (48kHz, stereo, hardcoded `payloadType: 111`, `parameters: {}` leer, `rtcpFeedback: []`, zufaelliger SSRC). Prueft `producer.paused`. Info-Log: `"Using payloadType=111 (matching playAudio pipeline)"`. |
 | 3 | ffmpeg | Test-Audio-Datei (aus musicDir) oder Stille-Generator (`anullsrc`) als Input, `-t 5` Limit. ffmpeg-Flags wie in `playAudio()`: `payload_type 111`, `192k`, `audio`-Applikation. 2s warten, Producer-Stats pruefen (packetCount > 0?). |
-| 4 | Stream + Consumer Discovery | `ctx.actions.voice.createStream()`, `producer.observer.on("newconsumer", ...)` Hook, 5s warten auf SDK-Consumer. Prueft Consumer-`paused`-Status. |
+| 4 | Stream + Consumer Discovery | `ctx.voice.createStream()`, `producer.observer.on("newconsumer", ...)` Hook, 5s warten auf SDK-Consumer. Prueft Consumer-`paused`-Status. |
 | 5 | Router State Dump | `router.dump()`, Consumer-Zaehlung, `router.transportsForTesting` Inspektion, Consumer-Status (paused/resumed), Consumer-Stats und Score. |
 | 6 | Client Transport Deep Inspection | ICE-State (`completed`?), DTLS-State (`connected`?), `iceSelectedTuple`, Consumer outbound-rtp Stats (packetCount > 0?), vollstaendiger Transport-Dump. |
 

@@ -72,6 +72,11 @@ export interface MockPluginContext {
       createStream: ReturnType<typeof mock>;
     };
   };
+  voice: {
+    getRouter: ReturnType<typeof mock>;
+    getListenInfo: ReturnType<typeof mock>;
+    createStream: ReturnType<typeof mock>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +178,14 @@ export function createMockPluginContext(
         })),
         createStream: mock(() => mockStream),
       },
+    },
+    voice: {
+      getRouter: mock(() => mockRouter),
+      getListenInfo: mock(async () => ({
+        ip: "127.0.0.1",
+        announcedAddress: "127.0.0.1",
+      })),
+      createStream: mock(() => mockStream),
     },
   };
 

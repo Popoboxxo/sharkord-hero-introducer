@@ -46,7 +46,7 @@ describe("MockPluginContext", () => {
   });
 
   it("[REQ-CORE-004] should have voice actions mocked", () => {
-    const router = ctx.actions.voice.getRouter(1);
+    const router = ctx.voice.getRouter(1);
     expect(router).toBeDefined();
     expect(typeof router.createPlainTransport).toBe("function");
   });
@@ -312,7 +312,7 @@ describe("Plugin onLoad – commands & data", () => {
       expect(cache["999"]).toBe("Alice");
 
       // Verify: NO playback was triggered (getRouter must NOT be called)
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
 
       // user:joined remains cache-only
@@ -345,7 +345,7 @@ describe("Plugin onLoad – commands & data", () => {
       await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
       expect(getRouterCalls[0][0]).toBe(5);
 
@@ -370,7 +370,7 @@ describe("Plugin onLoad – commands & data", () => {
       await voiceJoinedHandler({ channelId: 5, userId: 901, username: "NoMap" });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
 
       delete process.env.HERO_INTRO_DELAY_MS;
@@ -399,7 +399,7 @@ describe("Plugin onLoad – commands & data", () => {
       await voiceJoinedHandler({ channelId: 999, userId: 902, username: "Alice" });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
 
       delete process.env.HERO_INTRO_DELAY_MS;
@@ -434,7 +434,7 @@ describe("Plugin onLoad – commands & data", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await voiceLeftHandler({ channelId: 5, userId: 903 });
 
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
 
       delete process.env.HERO_INTRO_DELAY_MS;

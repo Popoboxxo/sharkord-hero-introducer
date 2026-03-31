@@ -19,7 +19,7 @@ Mit Sharkord `0.0.16` ist ein sauberer Voice-Event-Flow moeglich geworden:
 1. `voice:user_joined` liefert den **echten Ziel-Channel** fuer Auto-Logik.
 2. `voice:user_left` ermoeglicht **deterministisches Cleanup** pro User/Channel.
 3. `voice:runtime_initialized` und `voice:runtime_closed` erlauben robustes Tracking aktiver Voice-Runtimes.
-4. Audio-Pipelines lassen sich on-demand ueber `ctx.actions.voice` aufbauen:
+4. Audio-Pipelines lassen sich on-demand ueber `ctx.voice` aufbauen:
    - `getRouter(channelId)`
    - `getListenInfo()`
    - `createStream(...)`
@@ -92,13 +92,13 @@ Ergebnis: weniger Guessing, weniger Fallback-Hacks, deutlich stabilere Voice-Plu
 
 ---
 
-## 4) Voice Actions in ctx.actions.voice
+## 4) Voice Actions in ctx.voice
 
 Im Projekt werden folgende Actions genutzt:
 
-1. `ctx.actions.voice.getRouter(channelId)`
-2. `ctx.actions.voice.getListenInfo()`
-3. `ctx.actions.voice.createStream({...})`
+1. `ctx.voice.getRouter(channelId)`
+2. `ctx.voice.getListenInfo()`
+3. `ctx.voice.createStream({...})`
 
 ### Praktischer Einsatz
 

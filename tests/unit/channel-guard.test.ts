@@ -125,7 +125,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       await userJoinedHandler({ userId: 1, username: "SoloUser" });
 
       // Assert: NO playback (getRouter must not be called)
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
 
       // user:joined remains cache-only
@@ -251,7 +251,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       );
 
       // getRouter is the first side-effect of playAudio — must NOT be called
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
     });
   });
@@ -280,7 +280,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const result = await heroPlayMe.execute({ userId: 10, currentVoiceChannelId: 99 });
 
       expect(result).toBe("Voice channel is not active.");
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
     });
 
@@ -302,7 +302,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       );
 
       expect(result).toBe("Voice channel is not active.");
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
     });
 
@@ -319,7 +319,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       );
 
       expect(result).toBe("Voice channel is not active.");
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
     });
 
@@ -330,7 +330,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
       const result = await heroDiagnose.execute({ userId: 1, currentVoiceChannelId: 99 });
 
       expect(result).toBe("Voice channel is not active.");
-      const getRouterCalls = (ctx.actions.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
       expect(getRouterCalls).toHaveLength(0);
     });
   });
