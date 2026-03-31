@@ -89,6 +89,9 @@ const manifest = {
   ...(packageJson.sharkord?.homepage
     ? { homepage: packageJson.sharkord.homepage }
     : {}),
+  ...(packageJson.sharkord?.logo
+    ? { logo: packageJson.sharkord.logo }
+    : {}),
 };
 
 await fs.copyFile("package.json", `${outdir}/package.json`);
