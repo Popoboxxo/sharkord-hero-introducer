@@ -1,0 +1,17 @@
+acceptance: |
+  DisplayName mit Mapping + Voice-Channel → Intro abgespielt. Ohne Mapping → Info. Datei fehlt → Fehler. Ohne Voice-Channel → Fehler.
+active: true
+derived: false
+header: |
+  /hero-play <displayName>
+level: 12
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: _d_duT1dxnHdNgxdDdNq4mTXhjdL6u8Fbm7F5jYVp7E=
+status: Implemented
+text: |
+  `/hero-play <displayName>` spielt das Intro einer anderen Person ab. Voice-Channel aus invokerCtx.currentVoiceChannelId.
+traceability: src/server.ts L721-L762

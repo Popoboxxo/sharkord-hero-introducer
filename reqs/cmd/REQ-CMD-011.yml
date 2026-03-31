@@ -1,0 +1,17 @@
+acceptance: |
+  Mit Mapping + Voice-Channel → eigenes Intro abgespielt. Ohne Mapping → Info. Ohne Voice-Channel → Fehler.
+active: true
+derived: false
+header: |
+  /hero-play-me
+level: 11
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: oYa1gI2YA9HMM0hGfFihVegwcV3wLOjpADxZ2cnJkmA=
+status: Implemented
+text: |
+  `/hero-play-me` spielt das eigene Intro ab. Ermittelt Username über invokerCtx.userId aus User-Cache. Voice-Channel aus invokerCtx.currentVoiceChannelId.
+traceability: src/server.ts L682-L719

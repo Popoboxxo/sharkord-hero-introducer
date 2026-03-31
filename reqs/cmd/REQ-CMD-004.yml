@@ -1,0 +1,17 @@
+acceptance: |
+  Ohne Endung + eine Datei → Mapping gespeichert. Ohne Endung + mehrere → Warnung. Mit Endung + existiert → gespeichert. Keine Datei → Fehler mit Dateiliste.
+active: true
+derived: false
+header: |
+  /hero-set <displayName> <audioFileName>
+level: 4
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Must
+ref: ''
+reviewed: T3V6q1pKgr3bqbaBr8v2MmIB_iKJJsd-ZpQ8i6nhsVA=
+status: Implemented
+text: |
+  `/hero-set <displayName> <audioFileName>` speichert ein DisplayName→Audio-Mapping. Der audioFileName kann mit oder ohne Dateiendung angegeben werden (case-insensitive). Bei Namens-Duplikaten wird der User aufgefordert, den vollständigen Dateinamen anzugeben. Die Datei wird im festen Verzeichnis `<plugin-dir>/music/` gesucht.
+traceability: src/server.ts L537-L575

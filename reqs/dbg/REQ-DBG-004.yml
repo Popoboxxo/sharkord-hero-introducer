@@ -1,0 +1,16 @@
+acceptance: Channel-Event bei debug=true → Log enthält Channel-ID und Anzahl.
+active: true
+derived: false
+header: |
+  Debug-Log bei Channel-Events
+level: 4
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: GmzXu2_1pWYZlfRLyzMu2F8zTi-Vzp_Yz262mgrTOFU=
+status: Implemented
+text: |
+  Bei voice:runtime_initialized/closed wird aktuelle Channel-Anzahl geloggt.
+traceability: src/server.ts L397-L413

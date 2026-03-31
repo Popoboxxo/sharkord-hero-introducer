@@ -1,0 +1,12 @@
+acceptance: Entfernt. Debug über Plugin-Settings-UI.
+active: false
+derived: false
+header: /hero-debug (Entfernt)
+level: 8
+links:
+- REQ-002
+normative: true
+reviewed: null
+status: Removed
+text: ~~`/hero-debug`~~ **Entfernt.** Debug-Modus wird über Setting `debug` gesteuert
+  (REQ-CFG-004).

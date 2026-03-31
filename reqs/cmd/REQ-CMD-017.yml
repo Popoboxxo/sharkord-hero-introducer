@@ -1,0 +1,17 @@
+acceptance: |
+  DB mit 3 Audio-Dateien, 1 bereits vorhanden → 3 gefunden, 2 kopiert, 1 übersprungen. DB nicht erreichbar → Fehlermeldung, kein Crash.
+active: true
+derived: false
+header: |
+  /hero-search-music
+level: 17
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Could
+ref: ''
+reviewed: 2WeMJSPHYIBcskhagQ_-OFWRlPtKPgc_YmcMdf5M4MI=
+status: Implemented
+text: |
+  `/hero-search-music` durchsucht SQLite-Datenbank des Sharkord-Servers nach Audio-Anhängen und kopiert sie ins music-Verzeichnis. Nur audio/mpeg bzw. .mp3/.mpeg Dateien. Zusammenfassung: gefunden/kopiert/übersprungen.
+traceability: src/server.ts

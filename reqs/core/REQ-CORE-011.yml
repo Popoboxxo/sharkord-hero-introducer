@@ -1,0 +1,17 @@
+acceptance: |
+  Voice-Channel wird geschlossen → alle activeSessions mit passendem channelId-Prefix werden beendet (kill + cleanup + delete).
+active: true
+derived: false
+header: |
+  Cleanup bei Channel-Schließung
+level: 11
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: pCQ0z_t3Wievkd0tnrMVcQ7V6rlH2HBFYQ49Z_9-aOw=
+status: Implemented
+text: |
+  Wenn ein Voice-Channel geschlossen wird (`voice:runtime_closed`), werden alle aktiven Playback-Sessions für diesen Channel automatisch beendet (ffmpeg-Kill, Cleanup, Session-Entfernung).
+traceability: src/server.ts L402-L413

@@ -1,0 +1,17 @@
+acceptance: |
+  Ohne Endung + eine Datei → abgespielt. Duplikate → Warnung. Kein Match → Fehler mit Dateiliste. Ohne Voice-Channel → Fehler.
+active: true
+derived: false
+header: |
+  /hero-play-song <songName>
+level: 13
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: PmjtY8cntbo1ML3CLvtQrLzIJnhSzzigts3ipMLaCG0=
+status: Implemented
+text: |
+  `/hero-play-song <songName>` spielt beliebige Audio-Datei aus music-Verzeichnis. Case-insensitive, mit/ohne Endung. Bei Duplikaten Hinweis auf vollständigen Namen.
+traceability: src/server.ts L764-L801

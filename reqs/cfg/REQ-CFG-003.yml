@@ -1,0 +1,17 @@
+acceptance: |
+  Im Sharkord-Frontend unter Plugins → Hero Introducer → Settings sind Einstellungen sichtbar.
+active: true
+derived: false
+header: |
+  Settings-UI Aktivierung
+level: 3
+links:
+- REQ-003: GsQivBqMEt13DkCgtIJRWt2GyhgojC4kcK6OM9PfvAo=
+normative: true
+priority: Should
+ref: ''
+reviewed: rnH1zFisJcGo5z0oaCNzRaEZBVvON3cKvGWyfS5QV2c=
+status: Implemented
+text: |
+  Das Plugin aktiviert die Settings-UI im Sharkord-Frontend via `ctx.ui.enable()`.
+traceability: src/server.ts L1188

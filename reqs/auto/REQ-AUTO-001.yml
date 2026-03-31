@@ -1,0 +1,18 @@
+acceptance: |
+  Neues Issue → Analyse-Workflow startet mit Read-Berechtigungen. JSON-Artefakt wird erzeugt. Shell-Metazeichen werden als Daten behandelt.
+active: true
+derived: false
+header: |
+  GitHub Issue Auto-Analyse
+level: 1
+links:
+- REQ-008: CaNKrwkXT7REd2k5WRfPl6QClZr9FdntxRWghqZcCcg=
+normative: true
+priority: Should
+ref: ''
+reviewed: b5VJRhubQp4jF5KSVgDXTJJlyl8k3yWyYRg0gHKxvio=
+status: Implemented
+text: |
+  Bei Issue-Erstellung/Wiedereröffnung startet unprivilegierter Analyse-Workflow. Nur Read-Berechtigungen, keine Secrets, JSON-Artefakt als Ergebnis.
+traceability: |
+  .github/workflows/issue-auto-analysis.yml, scripts/github-autofix/analyze-issue.ts, scripts/github-autofix/lib.ts

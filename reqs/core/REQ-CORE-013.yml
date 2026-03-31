@@ -1,0 +1,17 @@
+acceptance: |
+  user:joined-Event löst keine Wiedergabe aus; nur Cache wird aktualisiert. /hero-play durch User ohne Voice-Channel → Fehlermeldung.
+active: true
+derived: false
+header: |
+  Event-Trennung voice:user_joined vs user:joined
+level: 13
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: fuL9Hf8SaZT022hTAYTXHuCVKL-1JBoX2awB2nOIkew=
+status: Implemented
+text: |
+  Der Bot startet automatische Wiedergabe ausschließlich bei `voice:user_joined` (Sharkord >= 0.0.16). Das Event `user:joined` dient nur der User-Cache-Pflege und darf keine Wiedergabe auslösen.
+traceability: src/server.ts

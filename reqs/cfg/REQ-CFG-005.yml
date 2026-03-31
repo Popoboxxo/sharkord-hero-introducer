@@ -1,0 +1,17 @@
+acceptance: |
+  volume=50 → -af volume=0.5. volume=0 → -af volume=0.0. volume=100 → -af volume=1.0. volume=150 → auf 100 begrenzt.
+active: true
+derived: false
+header: |
+  Setting volume
+level: 5
+links:
+- REQ-003: GsQivBqMEt13DkCgtIJRWt2GyhgojC4kcK6OM9PfvAo=
+normative: true
+priority: Should
+ref: ''
+reviewed: SGriJJxwRwxjfpeiX0rqF1rv_1H-iTvDHMTJgUjI_rE=
+status: Implemented
+text: |
+  Setting `volume` (number, Default: 25). Lautstärke 0-100%. Server-seitig über ffmpeg `-af volume=<dezimalwert>`. Clamp auf 0-100.
+traceability: src/server.ts L90-L97, L255-L256, L267

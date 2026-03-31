@@ -1,0 +1,12 @@
+acceptance: Entfernt. Aktivierung über Plugin-Management in Sharkord.
+active: false
+derived: false
+header: /hero-disable (Entfernt)
+level: 2
+links:
+- REQ-002
+normative: true
+reviewed: null
+status: Removed
+text: ~~`/hero-disable`~~ **Entfernt.** Aktivierung/Deaktivierung erfolgt über Sharkord
+  Plugin-Management.

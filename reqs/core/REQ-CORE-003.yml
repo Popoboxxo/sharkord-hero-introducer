@@ -1,0 +1,17 @@
+acceptance: |
+  MP3 in music-map.json verweist auf nicht-existente Datei → Fehler-Log-Eintrag, keine Wiedergabe.
+active: true
+derived: false
+header: |
+  Datei-Existenz-Prüfung
+level: 3
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: SIXhuGW-LL1fPujDiFW7i98LbO6O3xjvm7J5wzxxZ3M=
+status: Implemented
+text: |
+  Die MP3-Datei wird vor der Wiedergabe auf Existenz geprüft; fehlt die Datei, wird ein Fehler geloggt und keine Wiedergabe gestartet.
+traceability: src/server.ts L462-L469

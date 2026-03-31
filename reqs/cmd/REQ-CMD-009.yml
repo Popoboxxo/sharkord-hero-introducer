@@ -1,0 +1,17 @@
+acceptance: |
+  Ohne Endung + eine Datei + Username im Cache → gespeichert. Duplikate → Warnung. Keine Datei → Fehler. Username nicht im Cache → Fehler.
+active: true
+derived: false
+header: |
+  /hero-set-me <audioFileName>
+level: 9
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: ARWSoA6qlqMbw8bjkwrF7_JvJF2Yw7eOxyZ1I8dp9K4=
+status: Implemented
+text: |
+  `/hero-set-me <audioFileName>` mappt den ausführenden User auf die angegebene Audio-Datei. Case-insensitive Suche. Username aus User-Cache via invokerCtx.userId.
+traceability: src/server.ts L641-L680

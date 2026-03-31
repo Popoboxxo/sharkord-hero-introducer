@@ -1,0 +1,16 @@
+acceptance: tsc --noEmit meldet keine Typfehler.
+active: true
+derived: false
+header: |
+  TypeScript typsicher
+level: 1
+links:
+- REQ-006: uVhzbwsGMkwcqePuup1o_PBL8H3FJhafREeOmfVprvY=
+normative: true
+priority: Must
+ref: ''
+reviewed: 9tGbJpX0Iw9B1N8iNS0mUH1rohafwHwaBSvZ6Zdtj0o=
+status: Implemented
+text: |
+  Der gesamte Plugin-Code ist in TypeScript geschrieben und typsicher kompilierbar.
+traceability: tsconfig.json, src/server.ts

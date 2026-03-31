@@ -1,0 +1,11 @@
+active: true
+derived: false
+header: |
+  Plugin Lifecycle (LIFE)
+level: 5
+links: []
+normative: true
+ref: ''
+reviewed: dgczm8VtNdBjeBKQHL2iKQlacxbt4Nz7F81pQunEn6A=
+text: |
+  Anforderungen an onLoad/onUnload/Build.

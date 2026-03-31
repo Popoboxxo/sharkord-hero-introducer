@@ -1,0 +1,11 @@
+active: true
+derived: false
+header: |
+  Debug / Diagnose (DBG)
+level: 7
+links: []
+normative: true
+ref: ''
+reviewed: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+text: |
+  Anforderungen an Debug-Logging und Diagnose.

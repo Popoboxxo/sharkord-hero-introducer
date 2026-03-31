@@ -1,0 +1,18 @@
+acceptance: |
+  Fix erfolgreich + Diff + Tests/Build OK → Draft-PR. Kein Diff oder Validierung fehlgeschlagen → kein PR.
+active: true
+derived: false
+header: |
+  GitHub Issue Auto-Fix
+level: 2
+links:
+- REQ-008: CaNKrwkXT7REd2k5WRfPl6QClZr9FdntxRWghqZcCcg=
+normative: true
+priority: Should
+ref: ''
+reviewed: bGoGSL-HYYVY9xsZVjmZieRTVc0IdIL-LiTMtA7jo6o=
+status: Implemented
+text: |
+  Separater Workflow startet bei neuem Issue, versucht Fix auf temporärem Branch. Bei Erfolg+Diff+Validierung → Draft-PR. Sonst kein PR.
+traceability: |
+  .github/workflows/issue-auto-fix.yml, scripts/github-autofix/request-autofix.ts, scripts/github-autofix/lib.ts

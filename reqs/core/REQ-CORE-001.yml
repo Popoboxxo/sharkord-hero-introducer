@@ -1,0 +1,17 @@
+acceptance: |
+  Ein User mit konfiguriertem Audio-Mapping joint einen Voice-Channel (voice:user_joined) → nach INTRO_DELAY_MS wird Audio-Pfad als path.join(pluginDir, 'music', audioFileName) aufgelöst und im Event-Channel abgespielt.
+active: true
+derived: false
+header: |
+  Auto-Intro bei Voice-Join
+level: 1
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: X_RACRzsXIMmBbH4cDXCRvuDYUnN5_fnpK8z3F4p2_4=
+status: Implemented
+text: |
+  Wenn ein User einem Voice-Channel beitritt (`voice:user_joined`-Event), wird anhand des `username` aus dem Event (oder aus dem User-Cache) in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst. Nach einer konfigurierbaren Verzögerung (`INTRO_DELAY_MS`, Default 5000 ms) wird das Intro automatisch im Event-Channel (`channelId`) abgespielt. Das Plugin unterstützt `.mp3` und `.mpeg` Dateien.
+traceability: src/server.ts

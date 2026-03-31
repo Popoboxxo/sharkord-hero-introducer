@@ -1,0 +1,17 @@
+acceptance: |
+  Ein User ohne MP3-Mapping joint → keine hörbare Ausgabe, kein Fehler im Log.
+active: true
+derived: false
+header: |
+  Kein Fehler ohne Mapping
+level: 2
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: SFQdAiOoY6-MqXZSEi1UQgNV-VPTEXKN9PGVXNL0MC0=
+status: Implemented
+text: |
+  Wenn für einen User kein MP3-Mapping konfiguriert ist, erfolgt **keine** Audiowiedergabe und **kein** Fehler.
+traceability: src/server.ts L444-L447

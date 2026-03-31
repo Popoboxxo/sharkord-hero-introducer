@@ -1,0 +1,17 @@
+acceptance: |
+  Ohne currentVoiceChannelId → Fehlermeldung, kein Transport. Mit channelId aber nicht in activeChannels → 'Voice channel is not active.'
+active: true
+derived: false
+header: |
+  Voice-Channel-Guard für Audio-Commands
+level: 16
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Must
+ref: ''
+reviewed: x9oIdw_xLZgI0UQSCA7zyDXheCgux9m2HphXomPDVpI=
+status: Implemented
+text: |
+  Alle Audio-Commands (/hero-play-me, /hero-play, /hero-play-song, /hero-diagnose) prüfen vor Wiedergabe ob User in aktivem Voice-Channel ist. Sonst Abbruch mit Fehlermeldung, kein Transport erstellt.
+traceability: src/server.ts, tests/unit/channel-guard.test.ts

@@ -1,0 +1,17 @@
+acceptance: |
+  Command bei debug=true → Log enthält Command-Name, userId und Argumente.
+active: true
+derived: false
+header: |
+  Debug-Log bei Commands
+level: 5
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: 3j0m06wB56Z9bzoxgAIyOfEIryatGzrV5FbFS4UIPP4=
+status: Implemented
+text: |
+  Bei jedem Command werden Name, userId und Argumente geloggt.
+traceability: src/server.ts

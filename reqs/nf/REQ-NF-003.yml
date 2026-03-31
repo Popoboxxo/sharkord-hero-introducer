@@ -1,0 +1,16 @@
+acceptance: server.js enthält kein gebündeltes mediasoup.
+active: true
+derived: false
+header: |
+  mediasoup external
+level: 3
+links:
+- REQ-006: uVhzbwsGMkwcqePuup1o_PBL8H3FJhafREeOmfVprvY=
+normative: true
+priority: Must
+ref: ''
+reviewed: WFS1IXs2Q2Lw2bYBEubAa9DPr0emearmoz7seU4IJa8=
+status: Implemented
+text: |
+  Externe Abhängigkeit mediasoup wird beim Build als external markiert.
+traceability: build.ts L48

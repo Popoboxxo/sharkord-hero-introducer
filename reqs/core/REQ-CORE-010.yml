@@ -1,0 +1,17 @@
+acceptance: |
+  User joint → mindestens INTRO_DELAY_MS (5000 ms) vergehen bevor playAudio aufgerufen wird.
+active: true
+derived: false
+header: |
+  Konfigurierbare Intro-Verzögerung
+level: 10
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: 4YbJXrII4mF1IGU08MNhEaPFXzM5705oEVapv3Eb91E=
+status: Implemented
+text: |
+  Zwischen dem `voice:user_joined`-Event und dem Start der Intro-Wiedergabe wird eine konfigurierbare Verzögerung (`INTRO_DELAY_MS`, Default: 5000 ms) eingehalten.
+traceability: src/server.ts

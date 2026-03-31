@@ -1,0 +1,17 @@
+acceptance: |
+  In Voice-Channel → Report mit 7 Stages (0-6). Ohne Voice-Channel → Guard-Fehlermeldung. Danach Cleanup.
+active: true
+derived: false
+header: |
+  /hero-diagnose
+level: 14
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: q5XIOH90jCXyq1Jx4-2-g0YBXlgN10rTxVa8hcsBTok=
+status: Implemented
+text: |
+  `/hero-diagnose` führt vollständige Audio-Pipeline-Diagnose durch. Strukturierter Report mit PASS/FAIL/INFO pro Stage.
+traceability: src/server.ts L803-L1166

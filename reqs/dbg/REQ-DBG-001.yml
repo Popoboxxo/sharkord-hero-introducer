@@ -1,0 +1,17 @@
+acceptance: |
+  debug=true → debugLog('test') erzeugt '[DEBUG] test'. debug=false → kein Log.
+active: true
+derived: false
+header: |
+  debugLog Hilfsfunktion
+level: 1
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: pkbutnkXAAxfy6Chrg2LcvjzwLVeFjz_MBpfBje-bIE=
+status: Implemented
+text: |
+  debugLog(message) loggt nur bei debug=true mit Prefix [DEBUG] über ctx.log().
+traceability: src/server.ts L100-L105

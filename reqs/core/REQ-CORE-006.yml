@@ -1,0 +1,17 @@
+acceptance: |
+  User joint bei 0 aktiven Voice-Channels → Debug-Log 'No active voice channel', keine Wiedergabe.
+active: true
+derived: false
+header: |
+  Kein Channel → kein Playback
+level: 6
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: R52I7vg88uHbmMfMpnh6ULBXgQyl1Hn21s6QGyso-go=
+status: Implemented
+text: |
+  Ist kein aktiver Voice-Channel vorhanden, wird ein Debug-Log-Eintrag erzeugt und keine Wiedergabe gestartet.
+traceability: src/server.ts L476-L479

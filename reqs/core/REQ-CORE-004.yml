@@ -1,0 +1,17 @@
+acceptance: |
+  Während der Wiedergabe ist ein ffmpeg-Prozess aktiv und sendet Opus-RTP an den konfigurierten Port. Bun.spawn wird verwendet.
+active: true
+derived: false
+header: |
+  Audio-Pipeline ffmpeg→mediasoup
+level: 4
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: vVY5kfrTYftwb-i5oAsWUbdSIrrDqP8EZG59QxcIdB4=
+status: Implemented
+text: |
+  Die Audiowiedergabe erfolgt über `ffmpeg` (MP3/MPEG → Opus-RTP) an einen mediasoup `PlainTransport`. Der Stream wird via `ctx.actions.voice.createStream` im Voice-Channel exponiert. Die Pipeline verwendet `Bun.spawn` (nicht `child_process.spawn`) und orientiert sich am funktionierenden Referenz-Plugin `sharkord-music-bot`. **BEKANNTER BUG:** Audio ist trotz vollständig funktionierender Server-Pipeline nicht hörbar — vermutete Ursache ist Client-seitig.
+traceability: src/server.ts L201-L391

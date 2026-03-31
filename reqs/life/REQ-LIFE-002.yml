@@ -1,0 +1,16 @@
+acceptance: Nach onUnload wird 'Hero Introducer unloaded' geloggt.
+active: true
+derived: false
+header: |
+  onUnload Plugin-Cleanup
+level: 2
+links:
+- REQ-005: dgczm8VtNdBjeBKQHL2iKQlacxbt4Nz7F81pQunEn6A=
+normative: true
+priority: Must
+ref: ''
+reviewed: obikXscWkPLjhjqFpiymjtKr9GBvo3jwNLslLQo5ADI=
+status: Implemented
+text: |
+  onUnload loggt 'Hero Introducer unloaded'.
+traceability: src/server.ts L1196-L1198, L1200

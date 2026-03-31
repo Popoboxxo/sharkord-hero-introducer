@@ -1,0 +1,17 @@
+acceptance: |
+  Mappings vorhanden → Liste. Keine → Info-Meldung 'No intro mappings configured yet.'
+active: true
+derived: false
+header: |
+  /hero-list
+level: 6
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Must
+ref: ''
+reviewed: C8ZExZc6Xdd7Ky85D1wJA02AH798cQKBfw7pJn68XXM=
+status: Implemented
+text: |
+  `/hero-list` gibt eine formatierte Liste aller DisplayName→Audio-Zuordnungen im Format `DisplayName: audioFileName` zurück.
+traceability: src/server.ts L604-L618

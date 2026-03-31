@@ -1,0 +1,16 @@
+acceptance: Audio-Dateien vorhanden → Liste. Keine → Info-Meldung.
+active: true
+derived: false
+header: |
+  /hero-files
+level: 7
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: uIC4DujA_tXX2aIbnA-eeXcn75XdZfOoC0rTw4CWf70=
+status: Implemented
+text: |
+  `/hero-files` listet alle verfügbaren Audio-Dateien (`.mp3` und `.mpeg`) im Verzeichnis `<plugin-dir>/music/`.
+traceability: src/server.ts L620-L639

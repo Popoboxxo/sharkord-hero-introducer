@@ -1,0 +1,17 @@
+acceptance: |
+  Plugin startet ohne music-map.json → leeres Objekt verwendet, kein Crash.
+active: true
+derived: false
+header: |
+  JSON-Fallback bei fehlendem File
+level: 4
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Must
+ref: ''
+reviewed: qSDRl6Kuc90iwtaVHy2isyiuxQddaaviJUcH2Mrd4j4=
+status: Implemented
+text: |
+  Fehlt eine JSON-Datei beim Lesen, wird Fallback-Wert ({}) verwendet statt Fehler.
+traceability: src/server.ts L31-L38

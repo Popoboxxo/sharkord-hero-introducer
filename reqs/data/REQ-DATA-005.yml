@@ -1,0 +1,16 @@
+acceptance: Plugin startet ohne music/-Ordner → Ordner wird angelegt.
+active: true
+derived: false
+header: |
+  Auto-Erstellung music-Verzeichnis
+level: 5
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Must
+ref: ''
+reviewed: dgLH2xU8M14_5Iuyf3Dp-eGTrwoi5mN9-rFh3r83p3M=
+status: Implemented
+text: |
+  Verzeichnis `<plugin-dir>/music/` wird beim Plugin-Start automatisch erstellt.
+traceability: src/server.ts L61

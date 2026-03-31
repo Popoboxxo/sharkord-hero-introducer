@@ -1,0 +1,17 @@
+acceptance: |
+  Nach Wiedergabeende sind Producer und PlainTransport geschlossen und der Stream entfernt.
+active: true
+derived: false
+header: |
+  Ressourcen-Cleanup nach Playback
+level: 7
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: hHfzLsLzSIRwn6GAnghXaR63CrguEdv6FRa52zbfAxk=
+status: Implemented
+text: |
+  Nach Ende der Wiedergabe (ffmpeg-Exit oder Fehler) werden Producer, PlainTransport und Stream automatisch aufgeräumt (close/remove).
+traceability: src/server.ts L351-L357

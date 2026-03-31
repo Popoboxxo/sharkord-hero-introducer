@@ -1,0 +1,17 @@
+acceptance: |
+  oncePerDay=true + heute begrüßt → kein erneutes Intro. oncePerDay=true + heute nicht begrüßt → Intro. oncePerDay=false → Intro bei jedem Join.
+active: true
+derived: false
+header: |
+  Setting oncePerDay
+level: 2
+links:
+- REQ-003: GsQivBqMEt13DkCgtIJRWt2GyhgojC4kcK6OM9PfvAo=
+normative: true
+priority: Must
+ref: ''
+reviewed: mc1alfmReZzxiJioJV2SvGe6EnVFbGDczA6L4nPJrJA=
+status: Implemented
+text: |
+  Setting `oncePerDay` (boolean, Default: true). Wenn true, wird jeder User maximal einmal pro Kalendertag begrüßt.
+traceability: src/server.ts L74-L81

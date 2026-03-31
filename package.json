@@ -18,7 +18,10 @@
     "build:zip": "bun run build && zip -r sharkord-hero-introducer.zip dist/*",
     "test": "bun test",
     "test:unit": "bun test tests/unit/",
-    "test:integration": "bun test tests/integration/"
+    "test:integration": "bun test tests/integration/",
+    "reqs:import": "py scripts/doorstop-import.py",
+    "reqs:publish": "py scripts/doorstop-publish.py",
+    "reqs:validate": "doorstop"
   },
   "devDependencies": {
     "@types/bun": "latest",

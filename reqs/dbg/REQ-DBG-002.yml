@@ -1,0 +1,17 @@
+acceptance: |
+  User joint bei debug=true → Log enthält alle relevanten Informationen.
+active: true
+derived: false
+header: |
+  Debug-Log bei voice:user_joined
+level: 2
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: W23mDwaeeoOKAdKmJke_Qv4JqzUKIrAPZtOVLQzcqqQ=
+status: Implemented
+text: |
+  Im voice:user_joined-Handler werden userId, username, channelId, Mapping-Ergebnis, oncePerDay-Status, Datei-Existenz und aktive Channels geloggt.
+traceability: src/server.ts

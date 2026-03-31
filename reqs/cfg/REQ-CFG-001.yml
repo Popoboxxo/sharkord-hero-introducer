@@ -1,0 +1,12 @@
+acceptance: Entfernt. Aktivierung über Plugin-Management.
+active: false
+derived: false
+header: Setting enabled (Entfernt)
+level: 1
+links:
+- REQ-003
+normative: true
+reviewed: null
+status: Removed
+text: ~~Setting `enabled`~~ **Entfernt.** Aktivierung/Deaktivierung erfolgt über Sharkord
+  Plugin-Management.

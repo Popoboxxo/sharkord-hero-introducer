@@ -1,0 +1,17 @@
+acceptance: |
+  Mit Daily-Greet-Eintrag → entfernt + Bestätigung. Ohne Eintrag → Info 'no entry to reset'. Nach Reset + Join bei oncePerDay=true → Intro erneut.
+active: true
+derived: false
+header: |
+  /hero-reset-me
+level: 15
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Should
+ref: ''
+reviewed: B1AnrIiNnZ2f5berFcA2wnhLTh7xALEzJ7AW_KxuYbA=
+status: Implemented
+text: |
+  `/hero-reset-me` setzt den täglichen Begrüßungszähler des Users zurück. Intro wird beim nächsten Join erneut abgespielt (auch bei oncePerDay=true).
+traceability: src/server.ts

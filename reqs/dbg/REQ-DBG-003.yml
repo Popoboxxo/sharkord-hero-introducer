@@ -1,0 +1,17 @@
+acceptance: |
+  Wiedergabe bei debug=true → Log enthält Router-Info, IP/Port und ffmpeg-Kommando.
+active: true
+derived: false
+header: |
+  Debug-Log bei playAudio
+level: 3
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: ItD2YyN5xuH1aon8V-gwEsUanQit-RjneP1eXInLkGA=
+status: Implemented
+text: |
+  In playAudio werden Router-Erstellung, Transport-Config und ffmpeg-Kommando geloggt.
+traceability: src/server.ts L201-L391

@@ -1,0 +1,17 @@
+acceptance: |
+  voice:user_joined mit channelId → Wiedergabe in diesem Channel. Kein Fallback auf ersten aktiven Channel. channelId nicht aktiv → keine Wiedergabe.
+active: true
+derived: false
+header: |
+  Channel-ID aus Payload
+level: 14
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: qqAfsZh7yQAWt7Vkf6nOpck47o0U946lKdWp9Nia8mA=
+status: Implemented
+text: |
+  Der Ziel-Voice-Channel für Auto-Intro wird immer direkt aus dem `voice:user_joined`-Payload (`channelId`) bestimmt. Ein Fallback auf den ersten aktiven Channel ist nicht zulässig.
+traceability: src/server.ts

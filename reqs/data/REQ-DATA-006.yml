@@ -1,0 +1,17 @@
+acceptance: |
+  Docker-Testsystem gestartet → Dateien aus tests/test_music/ sind im music-Ordner.
+active: true
+derived: false
+header: |
+  Docker Test-Music-Mount
+level: 6
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Should
+ref: ''
+reviewed: o5anKVrhyIFmXTcwSihiuH1EMYeP-pTN4TojFdyZvq4=
+status: Implemented
+text: |
+  Beim Docker-Testsystem werden Testdateien aus tests/test_music/ in den Plugin-music-Ordner gemountet.
+traceability: docker-compose.dev.yml L31

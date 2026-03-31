@@ -1,0 +1,16 @@
+acceptance: Plugin startet in leerem Verzeichnis → data/-Ordner wird angelegt.
+active: true
+derived: false
+header: |
+  Auto-Erstellung data-Verzeichnis
+level: 3
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Must
+ref: ''
+reviewed: YXnXC31b7SrMx3jowNd5SudBToO-dOVSYT_KeORxSPI=
+status: Implemented
+text: |
+  Das Datenverzeichnis `<plugin-data-dir>/data/` wird beim Plugin-Start automatisch erstellt.
+traceability: src/server.ts L60

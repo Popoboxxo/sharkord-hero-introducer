@@ -1,0 +1,17 @@
+acceptance: |
+  Nach onLoad: alle Commands registriert, Settings vorhanden, Events gebunden, UI aktiviert.
+active: true
+derived: false
+header: |
+  onLoad Plugin-Initialisierung
+level: 1
+links:
+- REQ-005: dgczm8VtNdBjeBKQHL2iKQlacxbt4Nz7F81pQunEn6A=
+normative: true
+priority: Must
+ref: ''
+reviewed: w8ZcMErj_30WirSbqykhqEiBd0pvy9qIXujklzOcjRU=
+status: Implemented
+text: |
+  onLoad registriert Settings, Events, Commands und aktiviert UI. Loggt 'Hero Introducer loaded' und 'Hero Introducer ready'.
+traceability: src/server.ts L49-L50, L1188-L1189, L1200

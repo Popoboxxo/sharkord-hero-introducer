@@ -1,0 +1,17 @@
+acceptance: |
+  Diagnose in Voice-Channel → Report mit 7 Stages und PASS/FAIL/INFO pro Stage.
+active: true
+derived: false
+header: |
+  Pipeline-Diagnose Stages
+level: 8
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: FX1l9kdQM_JHiZWhsgvQUyHcJDxZ9_yYEVp5slsazJA=
+status: Implemented
+text: |
+  /hero-diagnose: Stage 0 Pre-flight, Stage 1 Transport, Stage 2 Producer, Stage 3 ffmpeg, Stage 4 Stream+Consumer, Stage 5 Router-State, Stage 6 Client-Transport.
+traceability: src/server.ts L803-L1166

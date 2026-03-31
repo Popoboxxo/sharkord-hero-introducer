@@ -1,0 +1,11 @@
+active: true
+derived: false
+header: |
+  GitHub-Automatisierung (AUTO)
+level: 8
+links: []
+normative: true
+ref: ''
+reviewed: CaNKrwkXT7REd2k5WRfPl6QClZr9FdntxRWghqZcCcg=
+text: |
+  Anforderungen an CI/CD und Issue-Automatisierung.

@@ -1,0 +1,17 @@
+acceptance: |
+  Bestehende Zuordnung → entfernt + Bestätigung. Keine → Info-Meldung.
+active: true
+derived: false
+header: |
+  /hero-remove <displayName>
+level: 5
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Must
+ref: ''
+reviewed: RbeqDtEAyk9M_jyLUPn3ciat9M-I9s1do46SbBcP8b4=
+status: Implemented
+text: |
+  `/hero-remove <displayName>` entfernt das MP3-Mapping für den angegebenen DisplayName. Existiert kein Mapping, wird eine Info-Meldung zurückgegeben.
+traceability: src/server.ts L577-L602

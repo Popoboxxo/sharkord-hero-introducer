@@ -1,0 +1,17 @@
+acceptance: |
+  Bei laufenden Intros: alle ffmpeg-Prozesse beendet, activeSessions-Map leer. Ohne laufende Intros: Info-Meldung.
+active: true
+derived: false
+header: |
+  /hero-stop
+level: 3
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Must
+ref: ''
+reviewed: feelQbKiyMBj8g4BrViBNax6oXqklsB3O4MtSQAYWjc=
+status: Implemented
+text: |
+  `/hero-stop` beendet sofort alle laufenden ffmpeg-Prozesse (SIGTERM) und gibt eine Bestätigung zurück. Sind keine Intros aktiv, wird eine entsprechende Info-Meldung zurückgegeben.
+traceability: src/server.ts L519-L535

@@ -1,0 +1,11 @@
+active: true
+derived: false
+header: |
+  Slash-Commands (CMD)
+level: 2
+links: []
+normative: true
+ref: ''
+reviewed: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+text: |
+  Anforderungen an alle Slash-Commands.

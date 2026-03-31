@@ -1,0 +1,17 @@
+acceptance: |
+  client.js enthält window.__SHARKORD_REACT__-Referenzen statt gebündeltem React.
+active: true
+derived: false
+header: |
+  React als Client-Global
+level: 4
+links:
+- REQ-006: uVhzbwsGMkwcqePuup1o_PBL8H3FJhafREeOmfVprvY=
+normative: true
+priority: Should
+ref: ''
+reviewed: dK2oAU0pGqR-3mNCYxRkRCjnaXQjc7EiHFVZ_tKgdCQ=
+status: Implemented
+text: |
+  React und React-DOM werden als Client-Globals aufgelöst (Sharkord stellt sie bereit).
+traceability: build.ts L7-L39

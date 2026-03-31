@@ -1,0 +1,17 @@
+acceptance: |
+  Nach Begrüßung enthält daily-greets.json den Eintrag mit heutigem Datum.
+active: true
+derived: false
+header: |
+  daily-greets.json Persistenz
+level: 2
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Must
+ref: ''
+reviewed: iQGySETc6He0S6nCfp-5oXpajYz0zeGOl9cCJFvtET4=
+status: Implemented
+text: |
+  Daily-Greet-Einträge (User-ID → ISO-Datum) persistent als JSON in `<plugin-data-dir>/data/daily-greets.json`.
+traceability: src/server.ts L56

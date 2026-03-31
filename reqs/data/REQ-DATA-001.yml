@@ -1,0 +1,17 @@
+acceptance: |
+  Nach /hero-set TestUser intro.mp3 enthält music-map.json den Eintrag.
+active: true
+derived: false
+header: |
+  music-map.json Persistenz
+level: 1
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Must
+ref: ''
+reviewed: qsi6CeDjY869uFPnT2HUgDfKQ0bRoDlutwptL1Kzi2Q=
+status: Implemented
+text: |
+  DisplayName→Audio-Zuordnungen persistent als JSON in `<plugin-data-dir>/data/music-map.json`.
+traceability: src/server.ts L55

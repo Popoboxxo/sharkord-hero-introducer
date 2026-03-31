@@ -1,0 +1,17 @@
+acceptance: |
+  User hat laufendes Intro → neuer Wiedergabe-Request → altes Intro wird gestoppt (SIGTERM), neues Intro startet.
+active: true
+derived: false
+header: |
+  Concurrent-Playback-Schutz
+level: 8
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Should
+ref: ''
+reviewed: 7gHbwmSeZMBY_-ZF4FUFYdhM9Zr30DusjCLrSBKcAyk=
+status: Implemented
+text: |
+  Pro userId darf maximal ein Intro gleichzeitig aktiv sein. Ein neuer Wiedergabe-Request für denselben User beendet zuerst die laufende Wiedergabe (SIGTERM), bevor die neue gestartet wird.
+traceability: src/server.ts L210-L217

@@ -1,0 +1,17 @@
+acceptance: |
+  bun build.ts → dist/ enthält server.js, client.js und package.json mit export-Marker.
+active: true
+derived: false
+header: |
+  Build-Prozess
+level: 3
+links:
+- REQ-005: dgczm8VtNdBjeBKQHL2iKQlacxbt4Nz7F81pQunEn6A=
+normative: true
+priority: Must
+ref: ''
+reviewed: g2i4YON-IUQwfGb6iOLYxPjY-SpCFbHBh3Ga_vJthLA=
+status: Implemented
+text: |
+  bun build.ts erzeugt dist/sharkord-hero-introducer/server.js (ESM, target bun), client.js (ESM, target browser) und package.json.
+traceability: build.ts L1-L61

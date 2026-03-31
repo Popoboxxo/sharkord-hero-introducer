@@ -4,3 +4,8 @@ dist/
 .DS_Store
 /tests/test_music
 .claude/settings.local.json
+
+# Doorstop generated outputs (regenerate via `bun run reqs:publish`)
+docs/requirements-doorstop/
+docs/doorstop-*.md
+docs/doorstop-export/

@@ -1,0 +1,16 @@
+acceptance: playAudio bei debug=true → Log enthält State-Dump.
+active: true
+derived: false
+header: |
+  State-Dump in playAudio
+level: 7
+links:
+- REQ-007: EG1ygYuMqlvOgRk--WTnPGjhwOC6frJgBhqvmJQu2_4=
+normative: true
+priority: Should
+ref: ''
+reviewed: FOWvpXxKhWIxaOm6_ffTu9UeFJv75jRPvv2S2xCkZwA=
+status: Implemented
+text: |
+  playAudio loggt State-Dump mit activeSessions.size und activeChannels-Liste.
+traceability: src/server.ts L208

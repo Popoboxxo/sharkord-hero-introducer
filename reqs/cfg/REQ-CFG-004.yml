@@ -1,0 +1,17 @@
+acceptance: |
+  debug=true → [DEBUG]-Einträge im Log. debug=false → keine [DEBUG]-Einträge.
+active: true
+derived: false
+header: |
+  Setting debug
+level: 4
+links:
+- REQ-003: GsQivBqMEt13DkCgtIJRWt2GyhgojC4kcK6OM9PfvAo=
+normative: true
+priority: Should
+ref: ''
+reviewed: AmqfY51Z8_shd0nv5cWSNCqyeytjSBSri2L4LRPO1bw=
+status: Implemented
+text: |
+  Setting `debug` (boolean, Default: false). Wenn true, detailliertes Debug-Logging über debugLog.
+traceability: src/server.ts L82-L89

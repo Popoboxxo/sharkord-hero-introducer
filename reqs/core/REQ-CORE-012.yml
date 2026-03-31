@@ -1,0 +1,17 @@
+acceptance: |
+  User A und User B joinen gleichzeitig → Intro A spielt zuerst, Intro B spielt nach Abschluss von A. Channel schließt → Queue geleert.
+active: true
+derived: false
+header: |
+  Per-Channel Intro-Queue
+level: 12
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: ZEBxy0dzHGYGNwCwBcSGcF718KnhPHbiK6fd50tsXE0=
+status: Implemented
+text: |
+  Wenn mehrere User gleichzeitig oder kurz nacheinander einem Voice-Channel beitreten, werden die Intros über eine per-Channel-Warteschlange sequenziell abgespielt (nicht überlappend). Die Queue wird bei Channel-Schließung automatisch geleert.
+traceability: src/server.ts

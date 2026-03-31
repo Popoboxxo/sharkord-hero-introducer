@@ -1,0 +1,17 @@
+acceptance: |
+  Plugin startet → user-cache.json geladen. Nach user:joined mit userId=42/username='Alice' → Cache enthält '42': 'Alice' und wird persistiert.
+active: true
+derived: false
+header: |
+  User-Cache Persistenz
+level: 7
+links:
+- REQ-004: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+normative: true
+priority: Must
+ref: ''
+reviewed: ml-IJGXCJMZSZTccG_64rIioqR9hOiSYG-Ufwk2IWdA=
+status: Implemented
+text: |
+  userId→username-Zuordnungen persistent in `<plugin-data-dir>/data/user-cache.json`. Beim Start in Memory-Cache geladen, bei user:joined aktualisiert.
+traceability: src/server.ts L57, L188-L192, L425-L429

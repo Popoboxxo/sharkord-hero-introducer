@@ -1,0 +1,17 @@
+acceptance: |
+  Ausführung → Server-Log und Chat-Antwort enthalten formatiertes JSON aller Parameter.
+active: true
+derived: false
+header: |
+  /hero-dump-context
+level: 10
+links:
+- REQ-002: fokWND6RrKNnI0QnWT6QNyBIMAROgmBXxKO2bQfZVW4=
+normative: true
+priority: Could
+ref: ''
+reviewed: nT0H6fCyj0UahMfNaCClseL24Zc0dMD6TEWlk0dTpiY=
+status: Implemented
+text: |
+  `/hero-dump-context` gibt alle Command-Parameter als JSON-Dump aus. Akzeptiert optionales Argument `testArg: string`. Dient Reverse-Engineering der SDK-Typen.
+traceability: src/server.ts L1168-L1186

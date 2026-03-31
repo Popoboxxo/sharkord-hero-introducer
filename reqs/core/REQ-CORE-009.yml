@@ -1,0 +1,17 @@
+acceptance: |
+  Vor Wiedergabe: kein Transport/Producer. Während: Transport+Producer+Stream. Nach: alle drei geschlossen/entfernt.
+active: true
+derived: false
+header: |
+  On-Demand Transport-Lifecycle
+level: 9
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: TUfmq-35SYXGmjT9RS3oOoBi-PGzS6HlcvvDFhQUCYE=
+status: Implemented
+text: |
+  Der Bot joint Voice-Channels nicht dauerhaft. Transport, Producer und Stream werden ausschließlich on-demand für die Dauer einer einzelnen Wiedergabe erstellt. Nach Wiedergabeende werden alle Ressourcen automatisch aufgeräumt. Es verbleibt kein persistenter Bot im Channel.
+traceability: src/server.ts L201-L391

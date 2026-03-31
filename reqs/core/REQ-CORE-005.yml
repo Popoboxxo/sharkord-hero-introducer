@@ -1,0 +1,17 @@
+acceptance: |
+  Nach voice:runtime_initialized enthält das interne Set die Channel-ID; nach voice:runtime_closed nicht mehr.
+active: true
+derived: false
+header: |
+  Voice-Channel-Tracking
+level: 5
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Must
+ref: ''
+reviewed: S80HiFWfCoswe3QnuM61dWa9swwQDa1qAx8PjaRdy3I=
+status: Implemented
+text: |
+  Das Plugin trackt aktive Voice-Channels über die Events `voice:runtime_initialized` und `voice:runtime_closed` in einem lokalen Set.
+traceability: src/server.ts L397-L413

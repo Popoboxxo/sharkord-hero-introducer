@@ -1,0 +1,17 @@
+acceptance: |
+  voice:user_left während laufender/ausstehender Session → Queue-Einträge entfernt, laufende Session beendet und bereinigt.
+active: true
+derived: false
+header: |
+  Cleanup bei voice:user_left
+level: 15
+links:
+- REQ-001: exLen_Bkoz_Ge1X0tRCTk5O18JDPdHrp8XwH2uEB__I=
+normative: true
+priority: Should
+ref: ''
+reviewed: sPLD82DMlAHfQyeR1s_vHfmO8ktM6sSJBgRKIhpa-dg=
+status: Implemented
+text: |
+  Bei `voice:user_left` werden ausstehende Queue-Einträge des Users im betroffenen Channel entfernt. Läuft für denselben channelId-userId bereits eine aktive Session, wird sie beendet und bereinigt.
+traceability: src/server.ts

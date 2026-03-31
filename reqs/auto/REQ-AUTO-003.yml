@@ -1,0 +1,18 @@
+acceptance: |
+  Issue mit Shell-Befehlen/Pfad-Traversal → kein Einfluss auf Ref/Branch/Scripts. Analyse-Workflow hat keine Write-Berechtigungen. Patches außerhalb erlaubter Pfade werden verworfen.
+active: true
+derived: false
+header: |
+  Sicherheit: Untrusted Issue-Daten
+level: 3
+links:
+- REQ-008: CaNKrwkXT7REd2k5WRfPl6QClZr9FdntxRWghqZcCcg=
+normative: true
+priority: Must
+ref: ''
+reviewed: FxeaKUbWDM6P0pCWjBk2k4Z2fN1MTckpNZGQksSusoo=
+status: Implemented
+text: |
+  Untrusted Issue-Daten dürfen nie als Code/Refs/Pfade ausgeführt werden. Nur serialisiert an versionierte Scripts übergeben. Patches nur in src/, docs/ oder README.md.
+traceability: |
+  .github/workflows/issue-auto-analysis.yml, .github/workflows/issue-auto-fix.yml, scripts/github-autofix/lib.ts, tests/unit/github-autofix.test.ts

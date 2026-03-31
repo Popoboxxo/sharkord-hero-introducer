@@ -1,0 +1,11 @@
+active: true
+derived: false
+header: |
+  Datenpersistenz (DATA)
+level: 4
+links: []
+normative: true
+ref: ''
+reviewed: Xll1bGrZo7PwEzQ_naoZoQUgKCwFQDVdbvQbc_AWFlk=
+text: |
+  Anforderungen an Datenhaltung und Persistenz.

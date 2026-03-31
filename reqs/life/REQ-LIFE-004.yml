@@ -1,0 +1,16 @@
+acceptance: client.js enthält keine React-Komponenten oder UI-Logik.
+active: true
+derived: false
+header: |
+  Leerer Client-Entry-Point
+level: 4
+links:
+- REQ-005: dgczm8VtNdBjeBKQHL2iKQlacxbt4Nz7F81pQunEn6A=
+normative: true
+priority: Could
+ref: ''
+reviewed: q639vXjtL_cADTIdeg_MpixN4JY98UE9KyYbBMNy6gE=
+status: Implemented
+text: |
+  client.ts exportiert keine UI-Komponenten (leerer Entry-Point).
+traceability: src/client.ts L1-L2

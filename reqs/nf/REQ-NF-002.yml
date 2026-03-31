@@ -1,0 +1,17 @@
+acceptance: |
+  Build-Target ist bun (server) bzw. browser (client); kein Node.js-Code.
+active: true
+derived: false
+header: |
+  Bun Runtime
+level: 2
+links:
+- REQ-006: uVhzbwsGMkwcqePuup1o_PBL8H3FJhafREeOmfVprvY=
+normative: true
+priority: Must
+ref: ''
+reviewed: Ybe4PGMy6g_l98Jy5JHTehqGuc7YNv7MaioO0T-y3Jk=
+status: Implemented
+text: |
+  Das Plugin verwendet Bun als Runtime (nicht Node.js).
+traceability: package.json L6
