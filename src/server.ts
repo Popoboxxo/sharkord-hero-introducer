@@ -1008,7 +1008,7 @@ const onLoad = async (ctx: PluginContext) => {
         rows = db.query(`
           SELECT DISTINCT f.name, f.original_name, f.mime_type, f.extension
           FROM files f
-          INNER JOIN message_files mf ON mf.fileId = f.id
+          INNER JOIN message_files mf ON mf.file_id = f.id
           WHERE f.mime_type IN ('audio/mpeg', 'audio/mp3')
              OR LOWER(f.extension) IN ('.mp3', '.mpeg', 'mp3', 'mpeg')
         `).all() as AudioFileRow[];

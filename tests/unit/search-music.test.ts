@@ -47,13 +47,13 @@ function createTestDb(
       updated_at INTEGER
     )`,
   );
-  db.run(`CREATE TABLE message_files (messageId INTEGER, fileId INTEGER)`);
+  db.run(`CREATE TABLE message_files (message_id INTEGER, file_id INTEGER, created_at INTEGER, updated_at INTEGER)`);
   for (const f of files) {
     db.run(
       `INSERT INTO files VALUES (?, ?, ?, ?, ?, 1, 1000, 'abc', 1, NULL)`,
       [f.id, f.name, f.original_name, f.mime_type, f.extension],
     );
-    db.run(`INSERT INTO message_files VALUES (1, ?)`, [f.id]);
+    db.run(`INSERT INTO message_files VALUES (1, ?, 1, NULL)`, [f.id]);
   }
   db.close();
 }
@@ -189,7 +189,7 @@ describe("/hero-search-music (REQ-CMD-017)", () => {
         updated_at INTEGER
       )`,
     );
-    db.run(`CREATE TABLE message_files (messageId INTEGER, fileId INTEGER)`);
+    db.run(`CREATE TABLE message_files (message_id INTEGER, file_id INTEGER, created_at INTEGER, updated_at INTEGER)`);
     db.close();
 
     const { commands } = await loadPlugin(tmpDir);
