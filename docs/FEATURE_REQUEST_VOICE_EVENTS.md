@@ -2,7 +2,7 @@
 
 ## Status (29.03.2026)
 
-Erfuellt in Sharkord `0.0.16`: Das Plugin nutzt jetzt `voice:user_joined` und `voice:user_left` fuer den Voice-Event-Flow.
+Erfuellt in Sharkord `0.0.16`: Das Plugin nutzt jetzt `user:joined_voice` und `user:left_voice` fuer den Voice-Event-Flow.
 
 ## Historisches Problem
 
@@ -12,14 +12,14 @@ This makes it impossible for plugins to react to voice channel activity. For exa
 
 ## Proposed Solution
 
-**1. Expose `voice:user_joined` and `voice:user_left` events on the plugin EventBus:**
+**1. Expose `user:joined_voice` and `user:left_voice` events on the plugin EventBus:**
 
 ```typescript
-ctx.events.on("voice:user_joined", (payload) => {
+ctx.events.on("user:joined_voice", (payload) => {
   // payload: { channelId: number, userId: number, username: string }
 });
 
-ctx.events.on("voice:user_left", (payload) => {
+ctx.events.on("user:left_voice", (payload) => {
   // payload: { channelId: number, userId: number }
 });
 ```

@@ -21,7 +21,7 @@
 
 | REQ-ID | Beschreibung | Status | Priorität | Traceability |
 |--------|-------------|--------|-----------|--------------|
-| REQ-CORE-001 | Wenn ein User einem Voice-Channel beitritt (`voice:user_joined`-Event), wird anhand des `username` aus dem Event (oder aus dem User-Cache) in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst. Nach einer konfigurierbaren Verzögerung (`INTRO_DELAY_MS`, Default 5000 ms) wird das Intro automatisch im Event-Channel (`channelId`) abgespielt. Das Plugin unterstützt `.mp3` und `.mpeg` Dateien. | Implemented | Must | `src/server.ts` |
+| REQ-CORE-001 | Wenn ein User einem Voice-Channel beitritt (`user:joined_voice`-Event), wird anhand des `username` aus dem Event (oder aus dem User-Cache) in der MusicMap nach einem passenden Eintrag gesucht. Existiert ein Mapping, wird der Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst. Nach einer konfigurierbaren Verzögerung (`INTRO_DELAY_MS`, Default 5000 ms) wird das Intro automatisch im Event-Channel (`channelId`) abgespielt. Das Plugin unterstützt `.mp3` und `.mpeg` Dateien. | Implemented | Must | `src/server.ts` |
 | REQ-CORE-002 | Wenn für einen User kein MP3-Mapping konfiguriert ist, erfolgt **keine** Audiowiedergabe und **kein** Fehler. | Implemented | Must | `src/server.ts` L444–L447 |
 | REQ-CORE-003 | Die MP3-Datei wird vor der Wiedergabe auf Existenz geprüft; fehlt die Datei, wird ein Fehler geloggt und keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` L462–L469 |
 | REQ-CORE-004 | Die Audiowiedergabe erfolgt über `ffmpeg` (MP3/MPEG → Opus-RTP) an einen mediasoup `PlainTransport`. Der Stream wird via `ctx.actions.voice.createStream` im Voice-Channel exponiert. Die Pipeline verwendet `Bun.spawn` (nicht `child_process.spawn`) und orientiert sich am funktionierenden Referenz-Plugin `sharkord-music-bot`. **BEKANNTER BUG:** Audio ist trotz vollständig funktionierender Server-Pipeline (Producer Score 10, Consumer existiert, RTP-Pakete fließen) nicht hörbar — vermutete Ursache ist Client-seitig (siehe Sektion "Bekannte Bugs"). | Implemented | Must | `src/server.ts` L201–L391 |
@@ -30,23 +30,23 @@
 | REQ-CORE-007 | Nach Ende der Wiedergabe (ffmpeg-Exit oder Fehler) werden Producer, PlainTransport und Stream automatisch aufgeräumt (`close`/`remove`). | Implemented | Must | `src/server.ts` L351–L357 |
 | REQ-CORE-008 | Pro userId darf maximal ein Intro gleichzeitig aktiv sein. Ein neuer Wiedergabe-Request für denselben User beendet zuerst die laufende Wiedergabe (SIGTERM), bevor die neue gestartet wird. | Implemented | Should | `src/server.ts` L210–L217 |
 | REQ-CORE-009 | Der Bot joint Voice-Channels nicht dauerhaft. Transport, Producer und Stream werden ausschließlich on-demand für die Dauer einer einzelnen Wiedergabe erstellt. Nach Wiedergabeende (ffmpeg-Exit) werden alle Ressourcen (Transport, Producer) automatisch aufgeräumt. Es verbleibt kein persistenter Bot im Channel. | Implemented | Must | `src/server.ts` L201–L391 |
-| REQ-CORE-010 | Zwischen dem `voice:user_joined`-Event und dem Start der Intro-Wiedergabe wird eine konfigurierbare Verzögerung (`INTRO_DELAY_MS`, Default: 5000 ms) eingehalten. | Implemented | Must | `src/server.ts` |
+| REQ-CORE-010 | Zwischen dem `user:joined_voice`-Event und dem Start der Intro-Wiedergabe wird eine konfigurierbare Verzögerung (`INTRO_DELAY_MS`, Default: 5000 ms) eingehalten. | Implemented | Must | `src/server.ts` |
 | REQ-CORE-011 | Wenn ein Voice-Channel geschlossen wird (`voice:runtime_closed`), werden alle aktiven Playback-Sessions für diesen Channel automatisch beendet (ffmpeg-Kill, Cleanup, Session-Entfernung). | Implemented | Must | `src/server.ts` L402–L413 |
 | REQ-CORE-012 | Wenn mehrere User gleichzeitig oder kurz nacheinander einem Voice-Channel beitreten, werden die Intros über eine per-Channel-Warteschlange sequenziell abgespielt (nicht überlappend). Die Queue wird bei Channel-Schließung (`voice:runtime_closed`) automatisch geleert. | Implemented | Must | `src/server.ts` |
-| REQ-CORE-013 | Der Bot startet automatische Wiedergabe ausschließlich bei `voice:user_joined` (Sharkord >= 0.0.16). Das Event `user:joined` dient nur der User-Cache-Pflege und darf keine Wiedergabe auslösen. Audio-Commands (`/hero-play`, `/hero-play-me`, `/hero-play-song`, `/hero-diagnose`) starten Wiedergabe nur bei aktivem Voice-Channel-Context. | Implemented | Must | `src/server.ts` |
-| REQ-CORE-014 | Der Ziel-Voice-Channel für Auto-Intro wird immer direkt aus dem `voice:user_joined`-Payload (`channelId`) bestimmt. Ein Fallback auf den ersten aktiven Channel ist nicht zulässig. Ist `channelId` nicht aktiv, wird keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` |
-| REQ-CORE-015 | Bei `voice:user_left` werden ausstehende Queue-Einträge des Users im betroffenen Channel entfernt. Läuft für denselben `channelId-userId` bereits eine aktive Session, wird sie beendet und bereinigt. | Implemented | Should | `src/server.ts` |
+| REQ-CORE-013 | Der Bot startet automatische Wiedergabe ausschließlich bei `user:joined_voice` (Sharkord >= 0.0.16). Das Event `user:joined` dient nur der User-Cache-Pflege und darf keine Wiedergabe auslösen. Audio-Commands (`/hero-play`, `/hero-play-me`, `/hero-play-song`, `/hero-diagnose`) starten Wiedergabe nur bei aktivem Voice-Channel-Context. | Implemented | Must | `src/server.ts` |
+| REQ-CORE-014 | Der Ziel-Voice-Channel für Auto-Intro wird immer direkt aus dem `user:joined_voice`-Payload (`channelId`) bestimmt. Ein Fallback auf den ersten aktiven Channel ist nicht zulässig. Ist `channelId` nicht aktiv, wird keine Wiedergabe gestartet. | Implemented | Must | `src/server.ts` |
+| REQ-CORE-015 | Bei `user:left_voice` werden ausstehende Queue-Einträge des Users im betroffenen Channel entfernt. Läuft für denselben `channelId-userId` bereits eine aktive Session, wird sie beendet und bereinigt. | Implemented | Should | `src/server.ts` |
 
 ### Abnahmekriterien REQ-CORE
 
 | REQ-ID | Abnahmekriterium |
 |--------|-----------------|
-| REQ-CORE-001 | Ein User mit konfiguriertem Audio-Mapping joint einen Voice-Channel (`voice:user_joined`) → nach `INTRO_DELAY_MS` wird Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst und im Event-Channel abgespielt. |
+| REQ-CORE-001 | Ein User mit konfiguriertem Audio-Mapping joint einen Voice-Channel (`user:joined_voice`) → nach `INTRO_DELAY_MS` wird Audio-Pfad als `path.join(pluginDir, "music", audioFileName)` aufgelöst und im Event-Channel abgespielt. |
 | REQ-CORE-013-A | `user:joined`-Event löst keine Wiedergabe aus; nur Cache wird aktualisiert. |
 | REQ-CORE-013-B | `/hero-play` durch User ohne aktiven Voice-Channel → Fehlermeldung "You must be in a voice channel to use this command.", kein Transport erstellt. |
-| REQ-CORE-014-A | `voice:user_joined`-Event mit `channelId` → Wiedergabe erfolgt exakt in diesem Channel. |
+| REQ-CORE-014-A | `user:joined_voice`-Event mit `channelId` → Wiedergabe erfolgt exakt in diesem Channel. |
 | REQ-CORE-014-B | Es wird kein Fallback auf den ersten aktiven Channel verwendet. |
-| REQ-CORE-014-C | `voice:user_joined`-Event, `channelId` ist nicht im `activeChannels`-Set → keine Wiedergabe, Debug-Log. |
+| REQ-CORE-014-C | `user:joined_voice`-Event, `channelId` ist nicht im `activeChannels`-Set → keine Wiedergabe, Debug-Log. |
 | REQ-CORE-002 | Ein User ohne MP3-Mapping joint → keine hörbare Ausgabe, kein Fehler im Log. |
 | REQ-CORE-003 | MP3 in music-map.json verweist auf nicht-existente Datei → Fehler-Log-Eintrag, keine Wiedergabe. |
 | REQ-CORE-004 | Während der Wiedergabe ist ein ffmpeg-Prozess aktiv und sendet Opus-RTP an den konfigurierten Port. `Bun.spawn` wird verwendet. |
@@ -59,7 +59,7 @@
 | REQ-CORE-011 | Voice-Channel wird geschlossen → alle `activeSessions` mit passendem channelId-Prefix werden beendet (kill + cleanup + delete). |
 | REQ-CORE-012-A | User A und User B joinen gleichzeitig → Intro A spielt zuerst, Intro B spielt nach Abschluss von A. |
 | REQ-CORE-012-B | Voice-Channel wird während laufender Queue geschlossen → Queue wird geleert, verbleibende Intros werden nicht abgespielt. |
-| REQ-CORE-015 | `voice:user_left` während laufender/ausstehender Session des Users im Channel → Queue-Einträge entfernt, laufende Session beendet und bereinigt. |
+| REQ-CORE-015 | `user:left_voice` während laufender/ausstehender Session des Users im Channel → Queue-Einträge entfernt, laufende Session beendet und bereinigt. |
 
 ---
 
@@ -241,7 +241,7 @@
 | REQ-ID | Beschreibung | Status | Priorität | Traceability |
 |--------|-------------|--------|-----------|--------------|
 | REQ-DBG-001 | Die interne Hilfsfunktion `debugLog(message)` loggt ausschließlich dann, wenn das Setting `debug` auf `true` steht. Jede Ausgabe wird mit dem Prefix `[DEBUG]` über `ctx.log()` geschrieben. | Implemented | Should | `src/server.ts` L100–L105 |
-| REQ-DBG-002 | Im `voice:user_joined`-Handler werden via Debug-Log mindestens userId, username, channelId, Mapping-Lookup-Ergebnis, oncePerDay-Status, Datei-Existenz und aktive Voice-Channels ausgegeben. Im `user:joined`-Handler werden Cache-Updates geloggt. | Implemented | Should | `src/server.ts` |
+| REQ-DBG-002 | Im `user:joined_voice`-Handler werden via Debug-Log mindestens userId, username, channelId, Mapping-Lookup-Ergebnis, oncePerDay-Status, Datei-Existenz und aktive Voice-Channels ausgegeben. Im `user:joined`-Handler werden Cache-Updates geloggt. | Implemented | Should | `src/server.ts` |
 | REQ-DBG-003 | In der Funktion `playAudio` werden Router-Erstellung, PlainTransport-Konfiguration (rtpIp, rtpPort) und ffmpeg-Spawn-Kommando via Debug-Log ausgegeben. | Implemented | Should | `src/server.ts` L201–L391 |
 | REQ-DBG-004 | Bei Voice-Channel Events (`voice:runtime_initialized`, `voice:runtime_closed`) wird die aktuelle Anzahl aktiver Channels via Debug-Log ausgegeben. | Implemented | Should | `src/server.ts` L397–L413 |
 | REQ-DBG-005 | Bei jedem Command-Aufruf werden Command-Name, userId und übergebene Argumente via Debug-Log geloggt. | Implemented | Should | `src/server.ts` (diverse Command-Handler) |
@@ -293,7 +293,7 @@
 | ID | Bereich | Beschreibung | Status |
 |----|---------|-------------|--------|
 | BUG-001 | Audio-Playback | Die Server-seitige Playback-Pipeline funktioniert vollständig: Producer Score erreicht 10, Consumer wird erstellt, 1539+ RTP-Pakete werden gesendet. Audio ist dennoch nicht hörbar. Die Implementierung wurde an das funktionierende Referenz-Plugin `sharkord-music-bot` angeglichen (gleiche ffmpeg-Flags, `Bun.spawn`, kein Delay). Vermutete Ursache liegt Client-seitig: Consumer-Resume, WebRTC-Transport-Setup oder Audio-Element im Browser. Betrifft REQ-CORE-004. | Wird untersucht |
-| BUG-002 | Channel-Join-Logik | Falscher Auto-Intro-Trigger über `user:joined` führte zu Wiedergabe im falschen/empty Channel. Gelöst durch Migration auf `voice:user_joined` (deterministischer `channelId`) und Cache-only-Verhalten für `user:joined`. | Behoben — Sharkord 0.0.16 Migration |
+| BUG-002 | Channel-Join-Logik | Falscher Auto-Intro-Trigger über `user:joined` führte zu Wiedergabe im falschen/empty Channel. Gelöst durch Migration auf `user:joined_voice` (deterministischer `channelId`) und Cache-only-Verhalten für `user:joined`. | Behoben — Sharkord 0.0.16 Migration |
 
 ---
 

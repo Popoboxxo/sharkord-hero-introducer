@@ -16,8 +16,8 @@ Referenz-Kontext:
 
 Mit Sharkord `0.0.16` ist ein sauberer Voice-Event-Flow moeglich geworden:
 
-1. `voice:user_joined` liefert den **echten Ziel-Channel** fuer Auto-Logik.
-2. `voice:user_left` ermoeglicht **deterministisches Cleanup** pro User/Channel.
+1. `user:joined_voice` liefert den **echten Ziel-Channel** fuer Auto-Logik.
+2. `user:left_voice` ermoeglicht **deterministisches Cleanup** pro User/Channel.
 3. `voice:runtime_initialized` und `voice:runtime_closed` erlauben robustes Tracking aktiver Voice-Runtimes.
 4. Audio-Pipelines lassen sich on-demand ueber `ctx.voice` aufbauen:
    - `getRouter(channelId)`
@@ -31,7 +31,7 @@ Ergebnis: weniger Guessing, weniger Fallback-Hacks, deutlich stabilere Voice-Plu
 
 ## Was ist neu bzw. praktisch nutzbar in 0.0.16
 
-## 1) Event: voice:user_joined
+## 1) Event: user:joined_voice
 
 ### Nutzen
 
@@ -53,7 +53,7 @@ Ergebnis: weniger Guessing, weniger Fallback-Hacks, deutlich stabilere Voice-Plu
 
 ---
 
-## 2) Event: voice:user_left
+## 2) Event: user:left_voice
 
 ### Nutzen
 
@@ -89,6 +89,7 @@ Ergebnis: weniger Guessing, weniger Fallback-Hacks, deutlich stabilere Voice-Plu
    - Channel aus `activeChannels` entfernen.
    - Session-Cleanup fuer Channel.
    - Queue fuer Channel leeren.
+
 
 ---
 
@@ -139,11 +140,11 @@ Das ist zentral fuer Commands wie:
 
 ## Nachher (empfohlen)
 
-1. Auto-Playback nur ueber `voice:user_joined` triggern.
+1. Auto-Playback nur ueber `user:joined_voice` triggern.
 2. `user:joined` nur noch fuer Cache/Metadaten nutzen.
 3. Ziel-Channel ausschliesslich aus Event-Payload `channelId` nehmen.
 4. `activeChannels` ueber runtime-events pflegen.
-5. Bei `voice:user_left` und `voice:runtime_closed` aggressiv cleanupen.
+5. Bei `user:left_voice` und `voice:runtime_closed` aggressiv cleanupen.
 
 ---
 
@@ -176,8 +177,8 @@ bitte gegen die offiziellen Sharkord-Release-Notes gegenpruefen.
 
 ```text
 voice:runtime_initialized -> channel aktiv
-voice:user_joined         -> auto logic (mapping, delay, playback)
-voice:user_left           -> user/channel cleanup
+user:joined_voice         -> auto logic (mapping, delay, playback)
+user:left_voice           -> user/channel cleanup
 voice:runtime_closed      -> channel cleanup
 ```
 
