@@ -319,9 +319,9 @@ describe("Plugin onLoad – commands & data", () => {
     });
   });
 
-  // -- REQ-CORE-001: voice:user_joined triggers auto-intro -----------------
+  // -- REQ-CORE-001: user:joined_voice triggers auto-intro -----------------
 
-  describe("voice:user_joined handler", () => {
+  describe("user:joined_voice handler", () => {
     it("[REQ-CORE-001] should start intro playback when mapping exists", async () => {
       process.env.HERO_INTRO_DELAY_MS = "0";
 
@@ -340,7 +340,7 @@ describe("Plugin onLoad – commands & data", () => {
         if (key === "volume") return 25;
         return undefined;
       });
-      const voiceJoinedHandler = events.get("voice:user_joined")!;
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
 
       await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -365,7 +365,7 @@ describe("Plugin onLoad – commands & data", () => {
         if (key === "volume") return 25;
         return undefined;
       });
-      const voiceJoinedHandler = events.get("voice:user_joined")!;
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
 
       await voiceJoinedHandler({ channelId: 5, userId: 901, username: "NoMap" });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -394,7 +394,7 @@ describe("Plugin onLoad – commands & data", () => {
         if (key === "volume") return 25;
         return undefined;
       });
-      const voiceJoinedHandler = events.get("voice:user_joined")!;
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
 
       await voiceJoinedHandler({ channelId: 999, userId: 902, username: "Alice" });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -406,9 +406,9 @@ describe("Plugin onLoad – commands & data", () => {
     });
   });
 
-  // -- REQ-CORE-015: voice:user_left cleanup -------------------------------
+  // -- REQ-CORE-015: user:left_voice cleanup -------------------------------
 
-  describe("voice:user_left handler", () => {
+  describe("user:left_voice handler", () => {
     it("[REQ-CORE-015] should stop active intro for user in channel", async () => {
       process.env.HERO_INTRO_DELAY_MS = "0";
 
@@ -427,8 +427,8 @@ describe("Plugin onLoad – commands & data", () => {
         if (key === "volume") return 25;
         return undefined;
       });
-      const voiceJoinedHandler = events.get("voice:user_joined")!;
-      const voiceLeftHandler = events.get("voice:user_left")!;
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
+      const voiceLeftHandler = events.get("user:left_voice")!;
 
       await voiceJoinedHandler({ channelId: 5, userId: 903, username: "Alice" });
       await new Promise((resolve) => setTimeout(resolve, 0));

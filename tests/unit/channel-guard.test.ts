@@ -90,7 +90,7 @@ describe("Channel guard – voice channel membership & command guards", () => {
   // -------------------------------------------------------------------------
   //
   // After BUG-002 fix: The user:joined event = server login, NOT voice channel
-  // join. The SDK does not expose a voice:user_joined event.
+  // join. The SDK does not expose a user:joined_voice event.
   // The handler now only caches userId → username. No playback is triggered.
   // -------------------------------------------------------------------------
 

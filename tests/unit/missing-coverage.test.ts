@@ -13,6 +13,7 @@ import os from "os";
 // ---------------------------------------------------------------------------
 // Covers: REQ-CORE-002, REQ-CORE-003, REQ-CORE-005, REQ-CORE-006,
 //         REQ-CMD-001, REQ-CMD-002, REQ-CMD-003, REQ-CMD-010, REQ-CMD-013,
+//         REQ-CMD-015,
 //         REQ-CFG-002, REQ-CFG-003, REQ-CFG-004,
 //         REQ-DATA-001, REQ-DATA-002, REQ-DATA-004, REQ-DATA-007
 // ---------------------------------------------------------------------------
@@ -317,10 +318,9 @@ describe("Missing Coverage Tests", () => {
 
   // =========================================================================
   // REQ-CFG-002: oncePerDay setting
-  // NOTE: oncePerDay logic is currently unused since user:joined no longer
-  // triggers auto-intro (BUG-002 fix). The setting registration is still
-  // tested via REQ-CFG-004. When voice:user_joined is available and auto-
-  // intro is re-enabled, these tests should be restored.
+  // oncePerDay only affects the automatic user:joined_voice handler.
+  // Manual commands (/hero-play-me, /hero-play, /hero-play-song) are NOT
+  // affected and must NEVER check or write dailyGreets.
   // =========================================================================
 
   describe("REQ-CFG-002 — oncePerDay setting", () => {
@@ -336,6 +336,202 @@ describe("Missing Coverage Tests", () => {
       expect(oncePerDay).toBeDefined();
       expect(oncePerDay!.type).toBe("boolean");
       expect(oncePerDay!.defaultValue).toBe(true);
+    });
+
+    it("[REQ-CFG-002-A] should skip auto-intro when user was already greeted today", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+      const today = new Date().toISOString().slice(0, 10);
+      await fs.writeFile(
+        path.join(dataDir, "daily-greets.json"),
+        JSON.stringify({ "900": today }),
+      );
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return true;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CFG-002-B] should play auto-intro when user was not yet greeted today", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return true;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CFG-002-C] should always play auto-intro when oncePerDay is false", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+      const today = new Date().toISOString().slice(0, 10);
+      await fs.writeFile(
+        path.join(dataDir, "daily-greets.json"),
+        JSON.stringify({ "900": today }),
+      );
+
+      const { ctx, settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return false;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CFG-002] should write daily-greets entry after successful auto-intro", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+
+      const { settings, events } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return true;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
+
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const greetsPath = path.join(dataDir, "daily-greets.json");
+      const raw = await fs.readFile(greetsPath, "utf8");
+      const greets = JSON.parse(raw);
+      const today = new Date().toISOString().slice(0, 10);
+      expect(greets["900"]).toBe(today);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CFG-002] /hero-play-me should NOT affect daily greets", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+      // Pre-populate user cache
+      await fs.writeFile(
+        path.join(dataDir, "user-cache.json"),
+        JSON.stringify({ "42": "Alice" }),
+      );
+
+      const { settings, commands } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return true;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+
+      const playMe = commands.get("hero-play-me")!;
+      await playMe.execute({ userId: 42, voiceChannelId: 5 });
+
+      // daily-greets.json should NOT exist or should be empty
+      const greetsPath = path.join(dataDir, "daily-greets.json");
+      try {
+        const raw = await fs.readFile(greetsPath, "utf8");
+        const greets = JSON.parse(raw);
+        expect(greets["42"]).toBeUndefined();
+      } catch {
+        // File doesn't exist — correct behavior
+      }
+    });
+
+    it("[REQ-CFG-002] /hero-play should NOT affect daily greets", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "bob.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Bob: "bob.mp3" }),
+      );
+
+      const { settings, commands } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return true;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+
+      const heroPlay = commands.get("hero-play")!;
+      await heroPlay.execute({ userId: 99, voiceChannelId: 5 }, { displayName: "Bob" });
+
+      // daily-greets.json should NOT exist or should not have an entry for userId 99
+      const greetsPath = path.join(dataDir, "daily-greets.json");
+      try {
+        const raw = await fs.readFile(greetsPath, "utf8");
+        const greets = JSON.parse(raw);
+        expect(greets["99"]).toBeUndefined();
+      } catch {
+        // File doesn't exist — correct behavior
+      }
     });
   });
 
@@ -375,6 +571,98 @@ describe("Missing Coverage Tests", () => {
   });
 
   // =========================================================================
+  // REQ-CMD-015: /hero-reset-me — reset daily greet counter
+  // =========================================================================
+
+  describe("REQ-CMD-015 — /hero-reset-me", () => {
+    it("[REQ-CMD-015-A] should remove daily-greet entry for invoker", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+      const today = new Date().toISOString().slice(0, 10);
+      await fs.writeFile(
+        path.join(dataDir, "daily-greets.json"),
+        JSON.stringify({ "42": today, "99": today }),
+      );
+
+      const { commands } = await loadPlugin(tmpDir);
+      const resetMe = commands.get("hero-reset-me")!;
+      const result = await resetMe.execute({ userId: 42 });
+
+      expect(result).toContain("reset");
+
+      const raw = await fs.readFile(path.join(dataDir, "daily-greets.json"), "utf8");
+      const greets = JSON.parse(raw);
+      expect(greets["42"]).toBeUndefined();
+      // Other user's entry should remain
+      expect(greets["99"]).toBe(today);
+    });
+
+    it("[REQ-CMD-015-B] should return info when no daily-greet entry exists", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+
+      const { commands } = await loadPlugin(tmpDir);
+      const resetMe = commands.get("hero-reset-me")!;
+      const result = await resetMe.execute({ userId: 42 });
+
+      expect(result).toContain("no daily greeting entry");
+    });
+
+    it("[REQ-CMD-015-C] after reset, auto-intro should play again despite oncePerDay=true", async () => {
+      process.env.HERO_INTRO_DELAY_MS = "0";
+
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.mkdir(musicDir, { recursive: true });
+      await fs.writeFile(path.join(musicDir, "alice.mp3"), "fake-mp3");
+      await fs.writeFile(
+        path.join(dataDir, "music-map.json"),
+        JSON.stringify({ Alice: "alice.mp3" }),
+      );
+      const today = new Date().toISOString().slice(0, 10);
+      await fs.writeFile(
+        path.join(dataDir, "daily-greets.json"),
+        JSON.stringify({ "900": today }),
+      );
+
+      const { ctx, settings, events, commands } = await loadPlugin(tmpDir);
+      settings.get = mock((key: string) => {
+        if (key === "oncePerDay") return true;
+        if (key === "debug") return false;
+        if (key === "volume") return 25;
+        return undefined;
+      });
+      const voiceJoinedHandler = events.get("user:joined_voice")!;
+
+      // 1. Auto-intro should be SKIPPED (already greeted today)
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      let getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls).toHaveLength(0);
+
+      // 2. Reset daily greet
+      const resetMe = commands.get("hero-reset-me")!;
+      const result = await resetMe.execute({ userId: 900 });
+      expect(result).toContain("reset");
+
+      // 3. Auto-intro should play again
+      await voiceJoinedHandler({ channelId: 5, userId: 900, username: "Alice" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      getRouterCalls = (ctx.voice.getRouter as ReturnType<typeof mock>).mock.calls;
+      expect(getRouterCalls.length).toBeGreaterThanOrEqual(1);
+
+      delete process.env.HERO_INTRO_DELAY_MS;
+    });
+
+    it("[REQ-CMD-015] should return error when userId is undefined", async () => {
+      await fs.mkdir(dataDir, { recursive: true });
+
+      const { commands } = await loadPlugin(tmpDir);
+      const resetMe = commands.get("hero-reset-me")!;
+      const result = await resetMe.execute({});
+
+      expect(result).toContain("Could not determine");
+    });
+  });
+
+  // =========================================================================
   // REQ-DATA-001: MusicMap persistence path
   // =========================================================================
 
@@ -403,10 +691,8 @@ describe("Missing Coverage Tests", () => {
 
   // =========================================================================
   // REQ-DATA-002: Daily greets persistence
-  // NOTE: Daily greets are no longer written by user:joined (BUG-002 fix).
-  // When auto-intro is re-enabled via voice:user_joined, this test should
-  // be restored. For now, test that the daily-greets file is still read
-  // correctly (fallback behavior).
+  // Daily greets are written by the user:joined_voice auto-intro handler
+  // when oncePerDay=true. Manual commands do NOT write daily greets.
   // =========================================================================
 
   describe("REQ-DATA-002 — Daily greets persistence", () => {

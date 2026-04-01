@@ -1,6 +1,6 @@
 # Codebase Overview — sharkord-hero-introducer
 
-> **Stand:** 29. Maerz 2026
+> **Stand:** 31. Maerz 2026
 > **Version:** 0.2.0
 
 ---
@@ -103,8 +103,8 @@
 |-------|--------------|-----|
 | `voice:runtime_initialized` | `activeChannels.add(channelId)`, `debugLog()` | REQ-CORE-005, REQ-DBG-004 |
 | `voice:runtime_closed` | `activeChannels.delete(channelId)`, alle `activeSessions` fuer diesen Channel aufraumen (kill + cleanup + delete), `playbackQueues.delete(channelId)`, `queueProcessing.delete(channelId)`, `debugLog()` | REQ-CORE-005, REQ-CORE-007, REQ-DBG-004 |
-| `voice:user_joined` | Auto-Intro-Logik: Channel aus Event-Payload (`channelId`), Mapping-Lookup, oncePerDay-Check, Datei-Existenz, Delay, danach `enqueuePlayback()`. | REQ-CORE-001, REQ-CORE-002, REQ-CORE-003, REQ-CORE-010 |
-| `voice:user_left` | Entfernt Queue-Einträge des Users im Channel und beendet aktive Session (`channelId-userId`). | REQ-CORE-015 |
+| `user:joined_voice` | Auto-Intro-Logik: Channel aus Event-Payload (`channelId`), Mapping-Lookup, oncePerDay-Check, Datei-Existenz, Delay, danach `enqueuePlayback()`. | REQ-CORE-001, REQ-CORE-002, REQ-CORE-003, REQ-CORE-010 |
+| `user:left_voice` | Entfernt Queue-Einträge des Users im Channel und beendet aktive Session (`channelId-userId`). | REQ-CORE-015 |
 | `user:joined` | Cache-Only: `userNameCache` aktualisieren und persistieren, keine Wiedergabe. | REQ-CORE-013, REQ-DATA-007, REQ-DBG-006 |
 
 #### Commands
@@ -323,7 +323,7 @@ Liest `issues`-Events, normalisiert neu erstellte Issues, sammelt Repo-Kontext u
 ### Flow 1: Voice-Join -> Intro-Playback
 
 ```
-voice:user_joined(channelId, userId, username)
+user:joined_voice(channelId, userId, username)
   |
   +- debugLog: userId, username, channelId
   |
@@ -565,7 +565,7 @@ bun build.ts
 | Problem | Beschreibung | Status |
 |---------|-------------|--------|
 | Audio nicht hoerbar (BUG-001) | Root Cause war leere `announcedAddress` in `config.ini` — nicht der Plugin-Code. Fix: `announcedAddress=127.0.0.1` (lokal) bzw. Public-IP eintragen. Code-Aenderungen fuer music-bot-Paritaet wurden ebenfalls angewendet (payloadType=111 hardcoded, `parameters: {}` leer, manueller Consumer-Hack entfernt). | Geloest und verifiziert (Docker-Dev-Stack, 2026-03-20) |
-| Intro spielt obwohl User alleine im Channel (BUG-002) | Historischer Fehler durch Auto-Trigger über `user:joined` und Channel-Fallback. | Behoben in 0.0.16-Migration (`voice:user_joined`, kein Fallback) |
+| Intro spielt obwohl User alleine im Channel (BUG-002) | Historischer Fehler durch Auto-Trigger über `user:joined` und Channel-Fallback. | Behoben in 0.0.16-Migration (`user:joined_voice`, kein Fallback) |
 
 ---
 

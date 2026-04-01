@@ -1,6 +1,6 @@
 # Architektur — sharkord-hero-introducer
 
-> **Stand:** 29. Maerz 2026
+> **Stand:** 31. Maerz 2026
 > **Version:** 0.2.0
 
 ---
@@ -94,8 +94,8 @@ server.ts
   |     +-- Event-Handler
   |     |     +- voice:runtime_initialized
   |     |     +- voice:runtime_closed
-  |     |     +- voice:user_joined
-  |     |     +- voice:user_left
+  |     |     +- user:joined_voice
+  |     |     +- user:left_voice
   |     |     +- user:joined
   |     |
   |     +-- Commands (11 Stueck)

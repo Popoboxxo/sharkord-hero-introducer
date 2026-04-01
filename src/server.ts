@@ -398,12 +398,12 @@ const onLoad = async (ctx: PluginContext) => {
     });
     debugLog(`ffmpeg spawned — PID=${ffmpeg.pid}`);
 
-    // 3. Register stream with Sharkord (matching sharkord-music-bot exactly)
+    // 3. Register stream with Sharkord
     const stream = voiceActions.createStream({
       key: `hero-intro-${channelId}-${userId}`,
       channelId,
       title: `Hero Intro: ${label}`,
-      avatarUrl: "https://i.imgur.com/uVBNUK9.png",
+      avatarUrl: "https://raw.githubusercontent.com/Popoboxxo/sharkord-hero-introducer/main/logo.png",
       producers: { audio: producer },
     });
     debugLog(`Stream registered`);
@@ -519,7 +519,7 @@ const onLoad = async (ctx: PluginContext) => {
   // Voice user events (Sharkord >= 0.0.16)
   // ---------------------------------------------------------------------------
 
-  ctx.events.on("voice:user_joined", async (payload: Record<string, unknown>) => {
+  ctx.events.on("user:joined_voice", async (payload: Record<string, unknown>) => {
     const channelId = payload.channelId as number;
     const userId = payload.userId as number;
     const payloadUsername = payload.username as string | undefined;
@@ -527,7 +527,7 @@ const onLoad = async (ctx: PluginContext) => {
     const cachedUsername = userNameCache.get(userId);
     const username = payloadUsername ?? cachedUsername;
 
-    debugLog(`>>> voice:user_joined event — channelId=${channelId}, userId=${userId}, username="${username ?? "unknown"}"`);
+    debugLog(`>>> user:joined_voice event — channelId=${channelId}, userId=${userId}, username="${username ?? "unknown"}"`);
 
     if (!activeChannels.has(channelId)) {
       debugLog(`Auto-intro skipped for userId=${userId} — voice channel ${channelId} is not active`);
@@ -537,7 +537,7 @@ const onLoad = async (ctx: PluginContext) => {
     if (payloadUsername) {
       userNameCache.set(userId, payloadUsername);
       await writeJsonFile(userCacheFile, Object.fromEntries(userNameCache));
-      debugLog(`User cache updated via voice:user_joined: userId=${userId} → "${payloadUsername}"`);
+      debugLog(`User cache updated via user:joined_voice: userId=${userId} → "${payloadUsername}"`);
     }
 
     if (!username) {
@@ -592,7 +592,7 @@ const onLoad = async (ctx: PluginContext) => {
     });
   });
 
-  ctx.events.on("voice:user_left", (payload: Record<string, unknown>) => {
+  ctx.events.on("user:left_voice", (payload: Record<string, unknown>) => {
     const channelId = payload.channelId as number;
     const userId = payload.userId as number;
     const sessionKey = `${channelId}-${userId}`;
@@ -614,7 +614,7 @@ const onLoad = async (ctx: PluginContext) => {
       active.ffmpeg.kill();
       active.cleanup();
       activeSessions.delete(sessionKey);
-      debugLog(`Stopped active intro on voice:user_left — channelId=${channelId}, userId=${userId}`);
+      debugLog(`Stopped active intro on user:left_voice — channelId=${channelId}, userId=${userId}`);
     }
   });
 
@@ -636,7 +636,7 @@ const onLoad = async (ctx: PluginContext) => {
     debugLog(`User cache updated: userId=${userId} → "${username}" (total cached: ${userNameCache.size})`);
 
     // NOTE: No automatic intro playback here.
-    // Auto-play is handled by voice:user_joined (Sharkord >= 0.0.16).
+    // Auto-play is handled by user:joined_voice (Sharkord >= 0.0.16).
   });
 
   // ---------------------------------------------------------------------------
