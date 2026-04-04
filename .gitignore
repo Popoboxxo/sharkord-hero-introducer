@@ -9,3 +9,4 @@ dist/
 docs/requirements-doorstop/
 docs/doorstop-*.md
 docs/doorstop-export/
+sync.log
