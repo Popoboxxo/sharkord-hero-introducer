@@ -1,60 +1,147 @@
-# CLAUDE.md
+# sharkord-hero-introducer
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> Projektbeschreibung für Claude-Agenten. Diese Datei ist die **einzige Quelle**
+> für projektspezifischen Kontext — Agenten lesen sie, statt eigenen Kontext zu haben.
+>
+> Generiert von agent-meta v0.13.1 — `2026-04-04`
+> Plattform-Layer: {{PLATFORM_LAYER}}
 
-## Runtime & Commands
+---
 
-**Runtime:** Bun (not Node.js). Use `Bun.spawn`, `bun:test`, and Bun APIs throughout.
+## Projekt
 
-```bash
-bun run build          # Build plugin via build.ts
-bun run build:zip      # Build + zip dist/
-bun test               # All tests
-bun test tests/unit/   # Unit tests only
-bun test tests/integration/  # Integration tests only
-bun test --test-name-pattern "<pattern>"  # Single test by name
+**Name:** sharkord-hero-introducer
+**Präfix:** hi
+**Plattform:** Sharkord Plugin SDK
+**Beschreibung:** Plays a personal MP3 intro for each user when they join a voice channel.
+
+---
+
+## Tech-Stack
+
+- **Runtime:** Bun (NICHT Node.js)
+- **Sprache:** TypeScript (ES6+, strict)
+- **Key-Dependencies:** {{KEY_DEPENDENCIES}}
+- **Ziel-Plattform:** {{TARGET_PLATFORM}}
+
+---
+
+## Architektur
+
+```
+src/
+  server.ts      # Plugin-Server-Entry (onLoad, onUnload, Commands, Events, Playback)
+  client.ts      # Leerer Client-Entry
+build.ts         # Bun Build-Script
+tests/
+  unit/          # Unit-Tests (bun:test)
+  integration/   # Integration-Tests
+  helpers/       # Test-Hilfsmittel (MockPluginContext)
+  test_music/    # Test-Audio-Dateien
+docs/
+  REQUIREMENTS.md
+  CODEBASE_OVERVIEW.md
+  conclusions/
+scripts/
+  github-autofix/  # Automatische Issue-Analyse und Fix-PRs
+  sync-agents.sh   # Sync .claude/agents/ → .github/agents/
+.claude/agents/    # Claude Code Agents
+.github/
+  agents/          # GitHub Copilot Agents (auto-generiert)
+  workflows/       # CI/CD Workflows
 ```
 
-## Architecture
+**Entry-Point:**
+```
+src/server.ts — Plugin-Server-Entry (onLoad, onUnload)
+src/client.ts — Plugin-Client-Entry (leer)
+```
 
-This is a **Sharkord plugin** that plays personal MP3 intros when users join a voice channel.
+**Besondere Patterns:**
+- onLoad/onUnload als Plugin-Lifecycle-Hooks (Sharkord SDK)
+- Alle Commands via ctx.commands.register() in onLoad registriert
+- Audio-Pipeline: ffmpeg → mediasoup PlainTransport → ctx.voice.createStream
+- Per-Channel-Playback-Queue für sequenzielle Intro-Wiedergabe
+- Flexible Dateinamen-Auflösung (mit/ohne Extension, case-insensitive)
+- userId→username Cache via user:joined Events
+- resolveVoiceActions() Fallback: ctx.voice (SDK 0.0.16) oder ctx.actions.voice (legacy)
 
-**Plugin entry points** (`src/server.ts`):
-- `onLoad` — registers settings, commands, and subscribes to voice-channel join events
-- `onUnload` — tears down mediasoup transports and processes
+---
 
-**Audio pipeline:** User joins → `playIntroForUser()` → `Bun.spawn(ffmpeg)` → mediasoup WebRTC transport → voice channel
+## Code-Konventionen
 
-**Data persistence:** Two JSON files managed via helpers at the top of `server.ts`:
-- Music map: `userId → mp3 filename`
-- Daily greets: `userId → last-greeted date` (for `oncePerDay` setting)
+- TypeScript ES6+, kein `require`, kein `var`, kein `any`
+- Named Exports only (`export { onLoad, onUnload }`) — kein default export
+- kebab-case Dateinamen: `module-name.ts`, Tests: `<module>.test.ts`
+- Bun APIs: `Bun.spawn`, `bun:test`, `bun:sqlite` (kein Node.js)
+- Commit-Format: `<type>(REQ-xxx[,REQ-yyy]): <description>`
+- Sprache Code/Commits/Tests: Englisch; interne Doku: Deutsch
 
-**Plugin settings** (registered via `@sharkord/plugin-sdk`): `enabled`, `oncePerDay`, `debug`
+---
 
-**Slash commands** (12 total): `/hero-enable`, `/hero-disable`, `/hero-stop`, `/hero-set`, `/hero-remove`, `/hero-list`, `/hero-files`, `/hero-set-me`, `/hero-play-me`, `/hero-play`, `/hero-debug`, `/hero-dump-context`
+## Build & Development
 
-## Agent Infrastructure
+```bash
+# Build
+bun run build
 
-Specialized Claude Code agents live in `.claude/agents/`:
-- `hero-introducer.md` — Orchestrator (coordinates all others)
-- `hi-developer.md` — Implementation
-- `hi-tester.md` — Tests
-- `hi-validator.md` — Validation against requirements
-- `hi-requirements.md` — Requirements engineering
-- `hi-documenter.md` — Documentation
+# Tests
+bun test
 
-**`.github/agents/*.agent.md` files are auto-generated** from `.claude/agents/` via `scripts/sync-agents.sh`. Never edit them manually. The sync runs automatically as a pre-commit hook when `.claude/agents/*.md` files change. To sync manually: `bash scripts/sync-agents.sh`.
+# Dev-Stack starten
+docker compose -f docker-compose.dev.yml up -d
 
-## Requirements & Commits
+# Nach Änderungen neu laden
+bun run build && docker compose -f docker-compose.dev.yml restart sharkord
+```
 
-Requirements are tracked in `docs/REQUIREMENTS.md` with IDs in the format `REQ-xxx` (e.g., `REQ-CMD-001`, `REQ-CORE-003`).
+---
 
-Commit format: `<type>(REQ-xxx[,REQ-yyy]): <description>`
+## Anforderungs-Kategorien
 
-Example: `feat(REQ-CMD-004,REQ-DATA-006): add DisplayName mapping`
+Kategorien für `docs/REQUIREMENTS.md`:
 
-## Language Convention
+- **Kernfunktionalität (REQ-CORE)** — Audio-Intro-Playback, Voice-Event-Handling, Queue-Management
+- **Slash-Commands (REQ-CMD)** — /hero-set, /hero-remove, /hero-list, /hero-files, /hero-set-me, /hero-play-me, /hero-play, /hero-stop, /hero-dump-context
+- **Konfiguration (REQ-CFG)** — Plugin-Settings: enabled, oncePerDay, debug
+- **Datenpersistenz (REQ-DATA)** — music-map.json, daily-greets.json, SQLite Datei-Index
+- **Lifecycle (REQ-LIFE)** — onLoad, onUnload, Transport-Cleanup
+- **Debug (REQ-DBG)** — Debug-Logging, Context-Dump
 
-- Code, comments, commit messages, and `REQUIREMENTS.md` → **English**
-- `README.md` (user-facing) → **English**
-- Internal agent coordination, `docs/conclusions/`, session notes → **Deutsch**
+---
+
+## Agenten-Konfiguration
+
+<!-- agent-meta:managed-begin -->
+<!-- This block is automatically updated by sync.py on every sync. -->
+<!-- Manual changes here will be overwritten. -->
+
+Generiert von agent-meta v0.14.0 — `2026-04-05`
+
+> **Einstiegspunkt:** Starte mit dem `orchestrator`-Agenten für alle Entwicklungsaufgaben.
+
+| Agent | Zuständigkeit |
+|-------|--------------|
+| `agent-meta-manager` | agent-meta verwalten: Upgrade, Sync, Feedback, projektspezifische Agenten anlegen |
+| `developer` | Feature-Implementierung und Bugfixes nach REQ-IDs |
+| `docker` | Sharkord Dev-Stack: Plugin-Mount, Access-Token, Mediasoup-Ports, Compose |
+| `documenter` | Doku pflegen: CODEBASE_OVERVIEW, ARCHITECTURE, README, Erkenntnisse |
+| `feature` | Neues Feature end-to-end durchführen: Branch → REQ → TDD → Dev → Validate → PR |
+| `git` | Commits, Branches, Tags, Push/Pull und alle Git-Operationen |
+| `ideation` | Neue Ideen explorieren, Vision schärfen, Übergabe an requirements |
+| `meta-feedback` | Verbesserungsvorschläge für agent-meta als GitHub Issues einreichen |
+| `orchestrator` | Einstiegspunkt für alle Entwicklungsaufgaben — koordiniert alle anderen Agenten |
+| `release` | Sharkord Plugin Release: Bun-Build, ZIP/TAR, GitHub Release via gh CLI |
+| `requirements` | Anforderungen aufnehmen, REQ-IDs vergeben, REQUIREMENTS.md pflegen |
+| `tester` | Tests schreiben (TDD), Test-Suite ausführen, Coverage sicherstellen |
+| `validator` | Code gegen REQs prüfen, DoD-Checkliste, Traceability-Audit |
+<!-- agent-meta:managed-end -->
+
+---
+
+## Sprachregeln
+
+- `README.md` → **Englisch**
+- Alle anderen Dokumente → **Deutsch**
+- Code-Kommentare, Commit-Messages → **Englisch**
+- Kommunikation mit dem Nutzer → **Deutsch**
