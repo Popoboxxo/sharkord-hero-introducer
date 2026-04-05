@@ -1,7 +1,7 @@
 {
   "_comment": "Kopiere diese Datei als agent-meta.config.json ins Projekt-Root und befülle alle Werte.",
 
-  "agent-meta-version": "0.14.0",
+  "agent-meta-version": "0.15.1",
   "ai-provider": "Claude",
 
 
