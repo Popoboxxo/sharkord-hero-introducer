@@ -11,3 +11,9 @@ docs/doorstop-*.md
 docs/doorstop-export/
 sync.log
 CLAUDE.personal.md
+
+# --- agent-meta managed (do not edit) ---
+.claude/settings.local.json
+CLAUDE.personal.md
+sync.log
+# --- end agent-meta managed ---

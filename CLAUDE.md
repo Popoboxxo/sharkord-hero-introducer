@@ -116,14 +116,14 @@ Kategorien für `docs/REQUIREMENTS.md`:
 <!-- This block is automatically updated by sync.py on every sync. -->
 <!-- Manual changes here will be overwritten. -->
 
-Generiert von agent-meta v0.15.1 — `2026-04-05`
+Generiert von agent-meta v0.16.0 — `2026-04-06`
 
 > **Einstiegspunkt:** Starte mit dem `orchestrator`-Agenten für alle Entwicklungsaufgaben.
 
 | Agent | Zuständigkeit |
 |-------|--------------|
 | `agent-meta-manager` | agent-meta verwalten: Upgrade, Sync, Feedback, projektspezifische Agenten anlegen |
-| `developer` | Feature-Implementierung und Bugfixes nach REQ-IDs |
+| `developer` | Feature-Implementierung und Bugfixes nach REQ-IDs (Sharkord Plugin SDK) |
 | `docker` | Sharkord Dev-Stack: Plugin-Mount, Access-Token, Mediasoup-Ports, Compose |
 | `documenter` | Doku pflegen: CODEBASE_OVERVIEW, ARCHITECTURE, README, Erkenntnisse |
 | `feature` | Neues Feature end-to-end durchführen: Branch → REQ → TDD → Dev → Validate → PR |
