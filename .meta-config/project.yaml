@@ -1,0 +1,197 @@
+# Migrated from agent-meta.config.json by migrate-config.py
+# Edit this file directly — agent-meta.config.json can be deleted after verification.
+
+agent-meta-version: 0.20.0
+ai-provider: Claude
+platforms:
+- sharkord
+roles:
+- orchestrator
+- developer
+- tester
+- validator
+- requirements
+- ideation
+- documenter
+- release
+- docker
+- meta-feedback
+- git
+- agent-meta-manager
+- feature
+project:
+  name: sharkord-hero-introducer
+  prefix: hi
+  short: hero-introducer
+variables:
+  PROJECT_NAME: sharkord-hero-introducer
+  PROJECT_DESCRIPTION: Plays a personal MP3 intro for each user when they join a voice
+    channel.
+  PROJECT_GOAL: Automatisches Abspielen von persönlichen Audio-Intros wenn Nutzer
+    einem Voice-Channel in Sharkord beitreten — pro User konfigurierbar via Slash-Commands.
+  PLATFORM: Sharkord Plugin SDK
+  RUNTIME: Bun (NICHT Node.js)
+  LANGUAGE: TypeScript (ES6+, strict)
+  PROJECT_LANGUAGES: TypeScript
+  COMMUNICATION_LANGUAGE: Englisch
+  USER_INPUT_LANGUAGE: Deutsch
+  DOCS_LANGUAGE: Englisch
+  INTERNAL_DOCS_LANGUAGE: Deutsch
+  CODE_LANGUAGE: Englisch
+  AGENT_META_REPO: Popoboxxo/agent-meta
+  GIT_PLATFORM: GitHub
+  GIT_REMOTE_URL: https://github.com/Popoboxxo/sharkord-hero-introducer
+  GIT_MAIN_BRANCH: main
+  SYSTEM_DEPENDENCIES: |-
+    - @sharkord/plugin-sdk: `0.0.16`
+    - bun: `>=1.0.0`
+    - ffmpeg: extern (Systemabhängigkeit im Docker-Image)
+    - mediasoup: via Sharkord-Host bereitgestellt
+  SYSTEM_URLS: |-
+    - Sharkord Web-UI: `http://localhost:4991`
+    - GitHub Repo: `https://github.com/Popoboxxo/sharkord-hero-introducer`
+  BUILD_COMMAND: bun run build
+  TEST_COMMAND: bun test
+  DEV_COMMANDS: |-
+    bun run build
+    bun test
+    bun test tests/unit/
+    bun test tests/integration/
+  DEV_STACK_START: docker compose -f docker-compose.dev.yml up -d
+  DEV_STACK_RELOAD: bun run build && docker compose -f docker-compose.dev.yml restart
+    sharkord
+  PROJECT_CONTEXT: 'Sharkord-Plugin das automatisch persönliche MP3-Intros abspielt
+    wenn Nutzer einem Voice-Channel beitreten. Audio-Pipeline: user:joined_voice →
+    playIntroForUser() → Bun.spawn(ffmpeg) → mediasoup PlainTransport → Voice-Channel.
+    Persistenz via zwei JSON-Dateien (music-map.json, daily-greets.json) und SQLite
+    für Datei-Suche. 12 Slash-Commands für Admin- und User-Verwaltung. Unterstützt
+    .mp3 und .mpeg Dateien.'
+  PROJECT_STRUCTURE: |-
+    src/
+      server.ts      # Plugin-Server-Entry (onLoad, onUnload, Commands, Events, Playback)
+      client.ts      # Leerer Client-Entry
+    build.ts         # Bun Build-Script
+    tests/
+      unit/          # Unit-Tests (bun:test)
+      integration/   # Integration-Tests
+      helpers/       # Test-Hilfsmittel (MockPluginContext)
+      test_music/    # Test-Audio-Dateien
+    docs/
+      REQUIREMENTS.md
+      CODEBASE_OVERVIEW.md
+      conclusions/
+    scripts/
+      github-autofix/  # Automatische Issue-Analyse und Fix-PRs
+      sync-agents.sh   # Sync .claude/agents/ → .github/agents/
+    .claude/agents/    # Claude Code Agents
+    .github/
+      agents/          # GitHub Copilot Agents (auto-generiert)
+      workflows/       # CI/CD Workflows
+  ENTRY_POINT_PATTERN: |-
+    src/server.ts — Plugin-Server-Entry (onLoad, onUnload)
+    src/client.ts — Plugin-Client-Entry (leer)
+  KEY_PATTERNS: |-
+    - onLoad/onUnload als Plugin-Lifecycle-Hooks (Sharkord SDK)
+    - Alle Commands via ctx.commands.register() in onLoad registriert
+    - Audio-Pipeline: ffmpeg → mediasoup PlainTransport → ctx.voice.createStream
+    - Per-Channel-Playback-Queue für sequenzielle Intro-Wiedergabe
+    - Flexible Dateinamen-Auflösung (mit/ohne Extension, case-insensitive)
+    - userId→username Cache via user:joined Events
+    - resolveVoiceActions() Fallback: ctx.voice (SDK 0.0.16) oder ctx.actions.voice (legacy)
+  ARCHITECTURE: |-
+    src/
+      server.ts  # Modul-Ebene: Types, Konstanten, Helpers
+                 # onLoad-Closure: Settings, Commands, Event-Handler, Playback-Pipeline
+                 # onUnload: Teardown aller aktiven Sessions
+  CODE_CONVENTIONS: |-
+    - TypeScript ES6+, kein `require`, kein `var`, kein `any`
+    - Named Exports only (`export { onLoad, onUnload }`) — kein default export
+    - kebab-case Dateinamen: `module-name.ts`, Tests: `<module>.test.ts`
+    - Bun APIs: `Bun.spawn`, `bun:test`, `bun:sqlite` (kein Node.js)
+    - Commit-Format: `<type>(REQ-xxx[,REQ-yyy]): <description>`
+    - Sprache Code/Commits/Tests: Englisch; interne Doku: Deutsch
+  EXTRA_DONTS: |-
+    - Kein `ctx.actions.voice` verwenden (deprecated seit SDK 0.0.16) — stattdessen `ctx.voice`
+    - Kein `child_process.spawn` — immer `Bun.spawn`
+    - Keine camelCase Spaltennamen in SQLite-Queries (Sharkord 0.0.16 nutzt snake_case)
+  CODE_QUALITY_RULES: |-
+    - Keine ungenutzten Imports
+    - Keine impliziten `any`
+    - Alle Funktionen typisiert
+    - Named Exports (kein `export default`)
+    - Bun-native APIs bevorzugen
+  TESTER_SNIPPETS_PATH: tester/bun-typescript.md
+  DEVELOPER_SNIPPETS_PATH: developer/bun-typescript.md
+  TEST_COMMANDS: |-
+    bun test
+    bun test tests/unit/
+    bun test tests/integration/
+    bun test --test-name-pattern "<pattern>"
+  BUILD_COMMANDS: |-
+    bun run build
+    bun run build:zip
+  REQ_CATEGORIES: |-
+    - Kernfunktionalität (REQ-CORE)
+    - Slash-Commands (REQ-CMD)
+    - Konfiguration (REQ-CFG)
+    - Datenpersistenz (REQ-DATA)
+    - Lifecycle (REQ-LIFE)
+    - Debug (REQ-DBG)
+  REQ_CATEGORIES_LIST: |-
+    - **Kernfunktionalität (REQ-CORE)** — Audio-Intro-Playback, Voice-Event-Handling, Queue-Management
+    - **Slash-Commands (REQ-CMD)** — /hero-set, /hero-remove, /hero-list, /hero-files, /hero-set-me, /hero-play-me, /hero-play, /hero-stop, /hero-dump-context
+    - **Konfiguration (REQ-CFG)** — Plugin-Settings: enabled, oncePerDay, debug
+    - **Datenpersistenz (REQ-DATA)** — music-map.json, daily-greets.json, SQLite Datei-Index
+    - **Lifecycle (REQ-LIFE)** — onLoad, onUnload, Transport-Cleanup
+    - **Debug (REQ-DBG)** — Debug-Logging, Context-Dump
+  SERVICE_NAME: sharkord
+  CONTAINER_NAME: hero-introducer-dev
+  PRIMARY_PORT: '4991'
+  EXTRA_PORTS: |-
+    - `40000/tcp` — mediasoup Signaling
+    - `40000/udp` — mediasoup RTP Media
+  DOCKER_STACKS_OVERVIEW: '| Dev-Stack | docker-compose.dev.yml | Lokales Testen mit
+    Live-Plugin-Mount |'
+  EXTRA_VOLUMES: |-
+    - `./dist/sharkord-hero-introducer:/home/bun/.config/sharkord/plugins/sharkord-hero-introducer` — Build-Output ins Plugin-Verzeichnis
+    - `./tests/test_music:/home/bun/.config/sharkord/plugins/sharkord-hero-introducer/music` — Test-Audio-Dateien
+  EXTRA_VOLUME_DEFINITIONS: '  sharkord-data:'
+  EXTRA_ENV_VARS: |-
+    - `NODE_ENV=development`
+    - `LOG_LEVEL=debug`
+    - `HERO_INTRO_DELAY_MS` — Verzögerung vor Intro-Playback in ms (Default: 5000)
+  EXTRA_STARTUP_INFO: |-
+    WICHTIG: Nach dem ersten Start muss `announcedAddress` in der Sharkord config.ini gesetzt werden (auf `127.0.0.1` für lokal oder die öffentliche IP für Remote-Zugriff). Ohne diesen Wert funktioniert WebRTC/Audio nicht (BUG-001).
+
+    Befehl:
+    ```
+    docker exec -u root hero-introducer-dev python3 -c "
+      c=open('/home/bun/.config/sharkord/config.ini').read()
+      c=c.replace('announcedAddress=\n','announcedAddress=127.0.0.1\n')
+      open('/home/bun/.config/sharkord/config.ini','w').write(c)"
+    docker compose -f docker-compose.dev.yml restart sharkord
+    ```
+  HOST_LAN_IP: 127.0.0.1
+  PRIMARY_IMAGE_TAG: v0.0.16
+  PLUGIN_DIR_NAME: sharkord-hero-introducer
+  BUILD_OUTPUT: |-
+    - server.js  (minified ESM Bundle)
+    - client.js  (minified ESM Bundle)
+    - package.json (kopiert aus Root)
+  ARTIFACT_ZIP_CMD: zip -r sharkord-hero-introducer.zip dist/*
+  ARTIFACT_TAR_CMD: cd dist && tar -czf sharkord-hero-introducer.tar.gz sharkord-hero-introducer/
+    && cd ..
+  GH_ASSETS: dist/sharkord-hero-introducer.zip dist/sharkord-hero-introducer.tar.gz
+  REQUIRED_BINARIES_SECTION: '- **ffmpeg** — wird im Sharkord Docker-Image (`sharkord/sharkord:v0.0.16`)
+    mitgeliefert. Für lokale Entwicklung außerhalb Docker muss ffmpeg installiert
+    sein.'
+  BINARY_INSTALL_STEPS: 'ffmpeg ist im Docker-Image enthalten. Lokal: `apt install
+    ffmpeg` (Linux) oder `brew install ffmpeg` (macOS).'
+  REQUIRED_BINARY_NAMES: ffmpeg
+  BUILD_SYSTEM_NOTES: build.ts (Bun-Script) bündelt server.ts und client.ts via Bun.build()
+    nach dist/sharkord-hero-introducer/. package.json wird 1:1 ins Dist kopiert. bun
+    run build:zip erstellt zusätzlich ZIP und TAR.GZ.
+  VERSION_DIST_BEHAVIOUR: build.ts kopiert package.json 1:1 ins Dist. Die Version
+    in package.json ist die einzige Quelle der Wahrheit.
+  SHARKORD_MIN_VERSION: 0.0.16
+  TECH_STACK: TypeScript, Bun, Mediasoup, ffmpeg
