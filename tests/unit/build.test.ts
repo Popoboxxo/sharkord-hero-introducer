@@ -12,7 +12,7 @@ const DIST = path.join(ROOT, "dist", "sharkord-hero-introducer");
 describe("Build", () => {
   // Run the build once before all tests in this suite
   beforeAll(async () => {
-    const proc = Bun.spawn(["bun", "build.ts"], {
+    const proc = Bun.spawn(["bun", "scripts/build.ts"], {
       cwd: ROOT,
       stdout: "pipe",
       stderr: "pipe",
@@ -24,13 +24,8 @@ describe("Build", () => {
     }
   });
 
-  it("[REQ-LIFE-003] should produce server.js in dist", async () => {
-    const stat = await fs.stat(path.join(DIST, "server.js"));
-    expect(stat.isFile()).toBe(true);
-  });
-
-  it("[REQ-LIFE-003] should produce client.js in dist", async () => {
-    const stat = await fs.stat(path.join(DIST, "client.js"));
+  it("[REQ-LIFE-003] should produce index.js in dist", async () => {
+    const stat = await fs.stat(path.join(DIST, "index.js"));
     expect(stat.isFile()).toBe(true);
   });
 
@@ -40,8 +35,8 @@ describe("Build", () => {
     expect(pkg.name).toBe("sharkord-hero-introducer");
   });
 
-  it("[REQ-LIFE-003] should produce valid ESM in server.js", async () => {
-    const content = await fs.readFile(path.join(DIST, "server.js"), "utf8");
+  it("[REQ-LIFE-003] should produce valid ESM in index.js", async () => {
+    const content = await fs.readFile(path.join(DIST, "index.js"), "utf8");
     // The build targets ESM format — check for export marker
     expect(content).toContain("export");
   });
