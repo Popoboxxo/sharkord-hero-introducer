@@ -3,10 +3,6 @@
   "version": "0.1.2-alpha.3",
   "module": "src/server.ts",
   "sharkord": {
-    "entry": {
-      "server": "server.js",
-      "client": "client.js"
-    },
     "author": "Popoboxxo",
     "homepage": "https://github.com/Popoboxxo/sharkord-hero-introducer",
     "description": "Plays a personal MP3 intro for each user when they join a voice channel.",
@@ -14,16 +10,17 @@
   },
   "type": "module",
   "scripts": {
-    "build": "bun build.ts",
+    "build": "bun scripts/build.ts",
     "build:zip": "bun run build && zip -r sharkord-hero-introducer.zip dist/*",
     "test": "bun test",
     "test:unit": "bun test tests/unit/",
-    "test:integration": "bun test tests/integration/",
+    "lint": "tsc --noEmit",
     "reqs:import": "py scripts/doorstop-import.py",
     "reqs:publish": "py scripts/doorstop-publish.py",
     "reqs:validate": "doorstop"
   },
   "devDependencies": {
+    "@sharkord/plugin-sdk": "0.0.16",
     "@types/bun": "latest",
     "@types/react": "^19.2.14"
   },
