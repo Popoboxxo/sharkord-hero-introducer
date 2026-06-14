@@ -8,6 +8,8 @@ import { registerHeroUserCommands } from "./commands/hero-user";
 import { registerHeroSearchMusicCommand } from "./commands/hero-search-music";
 import { registerHeroDiagnoseCommand } from "./commands/hero-diagnose";
 import { registerHeroDebugCommand } from "./commands/hero-debug";
+import { readJsonFile } from "./utils/json-io";
+import type { MusicMap } from "./types";
 
 export async function onLoad(ctx: PluginContext) {
   ctx.log("Hero Introducer loaded");
@@ -20,6 +22,21 @@ export async function onLoad(ctx: PluginContext) {
   registerHeroSearchMusicCommand(state);
   registerHeroDiagnoseCommand(state);
   registerHeroDebugCommand(state);
+
+  // Server action consumed by the client UI (status badge / admin panel).
+  (ctx as unknown as { actions?: { register?: (a: unknown) => void } }).actions?.register?.({
+    name: "hero:state",
+    description: "Return Hero Introducer status (intro count, active channels).",
+    async execute() {
+      const map = await readJsonFile<MusicMap>(state.musicMapFile, {});
+      return {
+        introCount: Object.keys(map).length,
+        activeChannels: state.activeChannels.size,
+        knownUsers: state.userNameCache.size,
+      };
+    },
+  });
+
   ctx.ui.enable();
   ctx.log("Hero Introducer ready");
 }

@@ -1,8 +1,9 @@
 {
   "name": "sharkord-hero-introducer",
-  "version": "0.1.2-alpha.3",
+  "version": "0.2.0",
   "module": "src/server.ts",
   "sharkord": {
+    "name": "Hero Introducer",
     "author": "Popoboxxo",
     "homepage": "https://github.com/Popoboxxo/sharkord-hero-introducer",
     "description": "Plays a personal MP3 intro for each user when they join a voice channel.",
@@ -20,7 +21,7 @@
     "reqs:validate": "doorstop"
   },
   "devDependencies": {
-    "@sharkord/plugin-sdk": "0.0.16",
+    "@sharkord/plugin-sdk": "0.0.22",
     "@types/bun": "latest",
     "@types/react": "^19.2.14"
   },

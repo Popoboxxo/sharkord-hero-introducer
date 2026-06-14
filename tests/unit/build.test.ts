@@ -24,20 +24,31 @@ describe("Build", () => {
     }
   });
 
-  it("[REQ-LIFE-003] should produce index.js in dist", async () => {
-    const stat = await fs.stat(path.join(DIST, "index.js"));
+  it("[REQ-LIFE-003] should produce server/index.js in dist (v0.0.22 native)", async () => {
+    const stat = await fs.stat(path.join(DIST, "server", "index.js"));
     expect(stat.isFile()).toBe(true);
   });
 
-  it("[REQ-LIFE-003] should copy package.json into dist", async () => {
-    const raw = await fs.readFile(path.join(DIST, "package.json"), "utf8");
-    const pkg = JSON.parse(raw);
-    expect(pkg.name).toBe("sharkord-hero-introducer");
+  it("[REQ-LIFE-003] should produce client/index.js in dist (v0.0.22 native)", async () => {
+    const stat = await fs.stat(path.join(DIST, "client", "index.js"));
+    expect(stat.isFile()).toBe(true);
   });
 
-  it("[REQ-LIFE-003] should produce valid ESM in index.js", async () => {
-    const content = await fs.readFile(path.join(DIST, "index.js"), "utf8");
-    // The build targets ESM format — check for export marker
+  it("[REQ-LIFE-003] should produce a valid manifest.json (sdkVersion 1)", async () => {
+    const raw = await fs.readFile(path.join(DIST, "manifest.json"), "utf8");
+    const manifest = JSON.parse(raw);
+    expect(manifest.id).toBe("sharkord-hero-introducer");
+    expect(manifest.sdkVersion).toBe(1);
+  });
+
+  it("[REQ-LIFE-003] should export onLoad/onUnload as ESM from server/index.js", async () => {
+    const content = await fs.readFile(path.join(DIST, "server", "index.js"), "utf8");
     expect(content).toContain("export");
+    expect(content).toMatch(/onLoad/);
+  });
+
+  it("[REQ-LIFE-003] should export components from client/index.js", async () => {
+    const content = await fs.readFile(path.join(DIST, "client", "index.js"), "utf8");
+    expect(content).toContain("components");
   });
 });
