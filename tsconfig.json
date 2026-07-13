@@ -5,7 +5,18 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["bun-types"]
+    "jsx": "react-jsx",
+    "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@sharkord/plugin-sdk": ["src/vendor/sharkord-plugin-sdk.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "build.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/**/*.ts",
+    "build.ts",
+    "tests/**/*.ts"
+  ]
 }
