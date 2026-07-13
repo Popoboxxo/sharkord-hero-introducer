@@ -28,6 +28,7 @@ export interface HeroSettings {
   get(key: "oncePerDay"): boolean;
   get(key: "debug"): boolean;
   get(key: "volume"): number;
+  set(key: "volume", value: number): void;
 }
 
 export interface PluginState {
@@ -43,6 +44,9 @@ export interface PluginState {
   activeChannels: Set<number>;
   playbackQueues: Map<number, QueueEntry[]>;
   queueProcessing: Set<number>;
+  // Guards against concurrent processing of the same channel-user voice join
+  // (prevents a double intro when a user rejoins within the intro delay window).
+  introInFlight: Set<string>;
   userNameCache: Map<number, string>;
   debugLog: (message: string) => void;
 }

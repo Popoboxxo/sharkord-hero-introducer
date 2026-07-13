@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs/promises";
 
 export function registerVoiceEvents(state: PluginState): void {
-  const { ctx, activeChannels, activeSessions, playbackQueues, queueProcessing, userNameCache, musicMapFile, musicDir, dailyGreetsFile, userCacheFile, debugLog, settings } = state;
+  const { ctx, activeChannels, activeSessions, playbackQueues, queueProcessing, introInFlight, userNameCache, musicMapFile, musicDir, dailyGreetsFile, userCacheFile, debugLog, settings } = state;
 
   ctx.events.on("voice:runtime_initialized", ({ channelId }: { channelId: number }) => {
     activeChannels.add(channelId);
@@ -43,57 +43,74 @@ export function registerVoiceEvents(state: PluginState): void {
       return;
     }
 
-    if (payloadUsername) {
-      userNameCache.set(userId, payloadUsername);
-      await writeJsonFile(userCacheFile, Object.fromEntries(userNameCache));
-      debugLog(`User cache updated via voice:user_joined: userId=${userId} → "${payloadUsername}"`);
-    }
-
-    if (!username) {
-      debugLog(`Auto-intro skipped for userId=${userId} — no username in payload or cache`);
+    // Concurrency guard: a rapid rejoin of the same user in the same channel can
+    // race the once-per-day check-and-set (they are separated by the intro delay).
+    // Serialize per channel-user so the second event is dropped instead of
+    // producing a duplicate intro.
+    const introKey = `${channelId}-${userId}`;
+    if (introInFlight.has(introKey)) {
+      debugLog(`Auto-intro skipped for userId=${userId} — intro already in progress for ${introKey}`);
       return;
     }
+    introInFlight.add(introKey);
 
-    const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
-    const audioFileName = musicMap[username];
-    if (!audioFileName) {
-      debugLog(`Auto-intro skipped for "${username}" — no mapping found`);
-      return;
-    }
+    try {
+      if (payloadUsername) {
+        userNameCache.set(userId, payloadUsername);
+        await writeJsonFile(userCacheFile, Object.fromEntries(userNameCache));
+        debugLog(`User cache updated via voice:user_joined: userId=${userId} → "${payloadUsername}"`);
+      }
 
-    const oncePerDay = settings.get("oncePerDay");
-    if (oncePerDay) {
-      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
-      const lastGreet = dailyGreets[String(userId)];
-      if (lastGreet === todayISO()) {
-        debugLog(`Skipping intro for "${username}" — already greeted today`);
+      if (!username) {
+        debugLog(`Auto-intro skipped for userId=${userId} — no username in payload or cache`);
         return;
       }
-    }
 
-    const mp3Path = path.join(musicDir, audioFileName);
-    const exists = await fs.access(mp3Path).then(() => true).catch(() => false);
-    if (!exists) {
-      ctx.error(`Mapped file for "${username}" not found: ${mp3Path}`);
-      return;
-    }
+      const musicMap = await readJsonFile<MusicMap>(musicMapFile, {});
+      const audioFileName = musicMap[username];
+      if (!audioFileName) {
+        debugLog(`Auto-intro skipped for "${username}" — no mapping found`);
+        return;
+      }
 
-    if (INTRO_DELAY_MS > 0) {
-      await new Promise((resolve) => setTimeout(resolve, INTRO_DELAY_MS));
-    }
+      const oncePerDay = settings.get("oncePerDay");
+      if (oncePerDay) {
+        const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
+        const lastGreet = dailyGreets[String(userId)];
+        if (lastGreet === todayISO()) {
+          debugLog(`Skipping intro for "${username}" — already greeted today`);
+          return;
+        }
+      }
 
-    if (!activeChannels.has(channelId)) {
-      debugLog(`Auto-intro skipped for "${username}" — channel ${channelId} became inactive during delay`);
-      return;
-    }
+      const mp3Path = path.join(musicDir, audioFileName);
+      const exists = await fs.access(mp3Path).then(() => true).catch(() => false);
+      if (!exists) {
+        ctx.error(`Mapped file for "${username}" not found: ${mp3Path}`);
+        return;
+      }
 
-    if (oncePerDay) {
-      const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
-      dailyGreets[String(userId)] = todayISO();
-      await writeJsonFile(dailyGreetsFile, dailyGreets);
-    }
+      if (INTRO_DELAY_MS > 0) {
+        await new Promise((resolve) => setTimeout(resolve, INTRO_DELAY_MS));
+      }
 
-    enqueuePlayback(state, { channelId, userId, label: username, mp3Path });
+      if (!activeChannels.has(channelId)) {
+        debugLog(`Auto-intro skipped for "${username}" — channel ${channelId} became inactive during delay`);
+        return;
+      }
+
+      if (oncePerDay) {
+        const dailyGreets = await readJsonFile<DailyGreets>(dailyGreetsFile, {});
+        dailyGreets[String(userId)] = todayISO();
+        await writeJsonFile(dailyGreetsFile, dailyGreets);
+      }
+
+      enqueuePlayback(state, { channelId, userId, label: username, mp3Path });
+    } catch (err) {
+      ctx.error(`voice:user_joined handler failed for userId=${userId}: ${String(err)}`);
+    } finally {
+      introInFlight.delete(introKey);
+    }
   });
 
   ctx.events.on("voice:user_left", (payload: Record<string, unknown>) => {
