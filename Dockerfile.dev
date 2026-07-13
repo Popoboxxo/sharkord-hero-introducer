@@ -1,4 +1,4 @@
-FROM ghcr.io/sharkord/sharkord:v0.0.20
+FROM ghcr.io/sharkord/sharkord:v0.0.22
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
