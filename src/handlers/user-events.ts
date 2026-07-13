@@ -10,9 +10,13 @@ export function registerUserEvents(state: PluginState): void {
 
     debugLog(`>>> user:joined event — userId=${userId}, username="${username}" (server login)`);
 
-    userNameCache.set(userId, username);
-    const cacheObj = Object.fromEntries(userNameCache);
-    await writeJsonFile(userCacheFile, cacheObj);
-    debugLog(`User cache updated: userId=${userId} → "${username}" (total cached: ${userNameCache.size})`);
+    try {
+      userNameCache.set(userId, username);
+      const cacheObj = Object.fromEntries(userNameCache);
+      await writeJsonFile(userCacheFile, cacheObj);
+      debugLog(`User cache updated: userId=${userId} → "${username}" (total cached: ${userNameCache.size})`);
+    } catch (err) {
+      ctx.error(`user:joined handler failed for userId=${userId}: ${String(err)}`);
+    }
   });
 }

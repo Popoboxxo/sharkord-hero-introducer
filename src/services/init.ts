@@ -66,6 +66,7 @@ export async function initializePluginState(ctx: PluginContext): Promise<PluginS
     activeChannels: new Set(),
     playbackQueues: new Map(),
     queueProcessing: new Set(),
+    introInFlight: new Set(),
     userNameCache,
     debugLog,
   };

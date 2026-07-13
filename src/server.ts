@@ -8,6 +8,7 @@ import { registerHeroUserCommands } from "./commands/hero-user";
 import { registerHeroSearchMusicCommand } from "./commands/hero-search-music";
 import { registerHeroDiagnoseCommand } from "./commands/hero-diagnose";
 import { registerHeroDebugCommand } from "./commands/hero-debug";
+import { registerHeroVolumeCommand } from "./commands/hero-volume";
 import { readJsonFile } from "./utils/json-io";
 import type { MusicMap } from "./types";
 
@@ -22,6 +23,7 @@ export async function onLoad(ctx: PluginContext) {
   registerHeroSearchMusicCommand(state);
   registerHeroDiagnoseCommand(state);
   registerHeroDebugCommand(state);
+  registerHeroVolumeCommand(state);
 
   // Server action consumed by the client UI (status badge / admin panel).
   (ctx as unknown as { actions?: { register?: (a: unknown) => void } }).actions?.register?.({
