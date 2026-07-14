@@ -1,6 +1,6 @@
 {
   "name": "sharkord-hero-introducer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "module": "src/server.ts",
   "sharkord": {
     "name": "Hero Introducer",

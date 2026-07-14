@@ -2,6 +2,12 @@
 
 All notable changes to sharkord-hero-introducer are documented here.
 
+## [0.3.1] — 2026-07-14
+
+### Dokumentation
+
+- Command Reference in README hinzugefügt (PR #7)
+
 ## [0.3.0] — 2026-07-13
 
 ### Features
