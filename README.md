@@ -95,33 +95,77 @@ Repository runbook:
 
 ## Commands
 
+All commands are prefixed with `/hero-` and executed in chat.
+
+### Core Commands
+
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `/hero-stop` | -- | Stop all currently playing intros immediately. |
-| `/hero-set` | `<displayName> <audioFileName>` | Map an audio file to a display name. File name can be with or without extension. |
+| `/hero-volume` | `[level]` | Show or set the intro playback volume (0–100). Omit the level to display current value. |
+| `/hero-set-me` | `<audioFileName>` | Map your own user to an intro audio file. File name can be with or without extension (e.g., `my-intro` or `my-intro.mp3`). |
+| `/hero-reset-me` | -- | Reset your daily greeting counter so your intro plays again today. |
+| `/hero-set` | `<displayName> <audioFileName>` | Map an audio file to a user by display name. |
 | `/hero-remove` | `<displayName>` | Remove the intro mapping for a display name. |
-| `/hero-list` | -- | Show all display name to audio file mappings. |
+| `/hero-list` | -- | Show all configured display name to audio file mappings. |
 | `/hero-files` | -- | List all available audio files (`.mp3`, `.mpeg`) in the music directory. |
-| `/hero-set-me` | `<audioFileName>` | Map your own user to an intro audio file. |
+
+### Playback Commands
+
+| Command | Arguments | Description |
+|---------|-----------|-------------|
 | `/hero-play-me` | -- | Play your own intro in the voice channel you are currently in. |
 | `/hero-play` | `<displayName>` | Play another user's intro in the voice channel you are currently in. |
-| `/hero-play-song` | `<songName>` | Play any audio file from the music directory. |
+| `/hero-play-song` | `<songName>` | Play any audio file from the music directory. Song name can be with or without extension (e.g., `song` or `song.mp3`). |
+| `/hero-stop` | -- | Stop all currently playing intros immediately. |
+
+### Management & Diagnostics
+
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `/hero-search-music` | -- | Search chat attachments for audio files and add them to the music library. |
 | `/hero-diagnose` | -- | Run a full audio pipeline diagnostic (7 stages, PASS/FAIL report). |
 | `/hero-dump-context` | `[testArg]` | (Debug) Dump the invoker context and args to the log. |
+
+### Example Workflow
+
+```
+/hero-set-me my-intro              # Set your own intro
+/hero-set eisenbart eisenbart.mpeg # Map another user
+/hero-list                         # View all mappings
+/hero-play eisenbart               # Play another user's intro
+/hero-play-song vibecodin          # Play a specific song
+/hero-files                        # List available audio files
+/hero-volume 50                    # Set volume to 50%
+/hero-stop                         # Stop playback
+```
+
+> **Note:** `/hero-enable` and `/hero-disable` have been removed. The plugin is always active once loaded. Use Sharkord's plugin management to enable or disable it.
+
+---
+
+## Music Workflow
+
+The typical workflow for adding a custom intro uses **chat attachments** as the source:
+
+1. **Post your audio file** in a Sharkord chat as an attachment (`.mp3` or `.mpeg` format).
+2. **Search for music** using `/hero-search-music` — this scans all chat attachments for audio files and copies them to the plugin's music directory.
+3. **Set your intro** using `/hero-set-me <audioFileName>` — reference the file name by name (with or without extension).
 
 ### Example
 
 ```
-/hero-set eisenbart eisenbart.mpeg
+# 1. Upload my-intro.mp3 to a chat
+
+# 2. Run search to import it
+/hero-search-music
+# Output: Found: 1 audio file(s), Copied: 1, Skipped: 0
+
+# 3. Set it as your intro
 /hero-set-me my-intro
-/hero-list
-/hero-play eisenbart
-/hero-play-song vibecodin
-/hero-files
-/hero-stop
+# Output: Intro set for yourself (YourName): my-intro.mp3
 ```
 
-> **Note:** `/hero-enable` and `/hero-disable` have been removed. The plugin is always active once loaded. Use Sharkord's plugin management to enable or disable it.
+Once set, your intro will play automatically when you join a voice channel (unless `oncePerDay` is enabled and you've already been greeted today).
 
 ---
 
